@@ -18,3 +18,17 @@ run "verify_single_nat" {
   }
 }
 
+# 3. Scenario Test: Verify that turning OFF cheap mode creates multiple NAT Gateways
+run "verify_high_availability_mode" {
+  command = plan
+
+  variables {
+    enable_single_nat_gateway = false
+  }
+
+  assert {
+    # If cheap mode is OFF, we should have as many NAT Gateways as AZs (2)
+    condition     = length(module.vpc.natgw_ids) == 2
+    error_message = "High Availability Mode failed! Expected 2 NAT Gateways."
+  }
+}
