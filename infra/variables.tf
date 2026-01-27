@@ -55,5 +55,6 @@ variable "node_instance_type" {
 variable "node_capacity_type" {
   description = "SPOT or ON_DEMAND"
   type        = string
-  default     = "SPOT" # <--- The budget saver
+  default     = "SPOT"
 }
+

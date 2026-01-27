@@ -1,3 +1,10 @@
 .terraform/
 terraform.tfstate
 terraform.tfstate.backup
+PLAN.md
+GEMINI.md
+usaspending_api_guide.md
+.pytest_cache/
+__pycache__/
+venv/
+*.zip
