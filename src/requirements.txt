@@ -1,0 +1,5 @@
+requests
+psycopg2-binary
+boto3
+pytest
+pytest-mock
