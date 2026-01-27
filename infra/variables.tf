@@ -57,3 +57,30 @@ variable "node_capacity_type" {
   type        = string
   default     = "SPOT" # <--- The budget saver
 }
+
+# Database Variables
+
+variable "db_name" {
+  description = "Name of the PostgreSQL database"
+  type        = string
+  default     = "govgraph"
+}
+
+variable "db_username" {
+  description = "Username for the database"
+  type        = string
+  default     = "postgres"
+}
+
+variable "db_password" {
+  description = "Password for the database"
+  type        = string
+  sensitive   = true
+  default     = "changeme123" # In prod, pass this via tfvars or env var
+}
+
+variable "db_instance_class" {
+  description = "RDS Instance Class"
+  type        = string
+  default     = "db.t3.micro"
+}

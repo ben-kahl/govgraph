@@ -80,6 +80,7 @@ gov-graph/
 │   └── dashboard/        # Next.js
 ├── tests/                # Tests
 └── README.md
+```
 
 # GovGraph Database Schema Context
 
