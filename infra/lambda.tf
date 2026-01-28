@@ -1,6 +1,24 @@
 # -----------------------------------------------------------------------------
 # Lambda (Ingestion & Processing)
 # -----------------------------------------------------------------------------
+module "lambda_layer" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  create_layer = true
+  layer_name   = "gov-graph-dependencies"
+  description  = "Layer for requests and psycopg2-binary"
+  source_path = [
+    {
+      path            = "${path.module}/../src"
+      prefix_in_layer = "python"
+      patterns        = ["requirements.txt"]
+    }
+  ]
+  build_in_docker = true
+
+  compatible_runtimes = ["python3.9"]
+}
 
 module "lambda_function" {
   source  = "terraform-aws-modules/lambda/aws"
@@ -11,6 +29,8 @@ module "lambda_function" {
   handler       = "ingest_contracts.main" # Assuming main() is the entry point
   runtime       = "python3.9"
   timeout       = 300
+
+  layers = [module.lambda_layer.lambda_layer_arn]
 
   source_path = "${path.module}/../src/ingestion"
 
@@ -39,7 +59,7 @@ module "lambda_function" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          aws_sqs_queue.contract_queue.arn,
+          module.sqs.queue_arn,
           module.db.db_instance_master_user_secret_arn
         ]
       },
