@@ -34,6 +34,7 @@ GovGraph follows a structured pipeline to transform messy public data into actio
 
 * Graph Projection: Cleaned data is synced to Neo4j, where vendors, agencies, and contracts are represented as nodes and relationships.
 
+
 **Database Schema**
 
 The platform manages complex relationships including:
@@ -47,13 +48,13 @@ The platform manages complex relationships including:
 ## Getting Started
 **Prerequisites**
 
-* AWS CLI configured with appropriate permissions.
+* AWS CLI configured with appropriate permissions
 
-* Terraform v1.6+.
+* Terraform v1.6+
 
-* Kubectl.
+* Kubectl
 
-* Python >= 3.9
+* Python v3.9+
 
 **Local Development**
 
