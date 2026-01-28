@@ -4,46 +4,46 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 ## Key Features
 
-* AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude Haiku) to normalize inconsistent vendor records (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp").
+* AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude Haiku) to normalize inconsistent vendor records (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp")
 
-* Polyglot Persistence: Combines PostgreSQL for relational data integrity (raw and cleaned contracts) with Neo4j for high-performance graph traversal and relationship discovery.
+* Polyglot Persistence: Combines PostgreSQL for relational data integrity (raw and cleaned contracts) with Neo4j for high-performance graph traversal and relationship discovery
 
-* Infrastructure as Code: The entire environment is fully provisioned via Terraform, featuring strict cost-control policies (Spot Instances, Single NAT Gateway) optimized for lean deployments.
+* Infrastructure as Code: The entire environment is fully provisioned via Terraform, featuring strict cost-control policies (Spot Instances, Single NAT Gateway) optimized for lean deployments
 
-* Kubernetes Native: Built on a microservices architecture deployed to Amazon EKS, using KEDA for event-driven autoscaling based on queue depth.
+* Kubernetes Native: Built on a microservices architecture deployed to Amazon EKS
 
 ## Tech Stack
 
-* Infrastructure: AWS (EKS, RDS, SQS, Bedrock), Terraform, Docker, Helm.
+* Infrastructure: AWS (EKS, RDS, SQS, Bedrock), Terraform, Docker, Helm
 
-* Backend: Python (FastAPI), Boto3, Celery, SQLAlchemy.
+* Backend: Python (FastAPI).
 
-* Data & AI: Neo4j (AuraDB), PostgreSQL, Amazon Bedrock (LLM), Pandas.
+* Data & AI: Neo4j (AuraDB), PostgreSQL, Amazon Bedrock (LLM), Pandas
 
-* Frontend: Next.js, React Flow (Graph Visualization), Tailwind CSS.
+* Frontend: Next.js, React Flow (Graph Visualization), Tailwind CSS
 
-* CI/CD: GitHub Actions, Pytest.
+* CI/CD: GitHub Actions, Pytest
 
 ## Data Architecture
 
 GovGraph follows a structured pipeline to transform messy public data into actionable intelligence:
 
-* Ingestion: A Python-based scraper (AWS Lambda) pulls daily contract updates from the USAspending API into a PostgreSQL "landing zone."
+* Ingestion: A Python-based scraper (AWS Lambda) pulls daily contract updates from the USAspending API into a PostgreSQL "landing zone"
 
-* Cleaning: The LLM processing engine resolves entity names and assesses confidence scores for every vendor.
+* Cleaning: The LLM processing engine resolves entity names and assesses confidence scores for every vendor
 
-* Graph Projection: Cleaned data is synced to Neo4j, where vendors, agencies, and contracts are represented as nodes and relationships.
+* Graph Projection: Cleaned data is synced to Neo4j, where vendors, agencies, and contracts are represented as nodes and relationships
 
 
 **Database Schema**
 
 The platform manages complex relationships including:
 
-* Prime-to-Subcontractor links (including Tier 2+ depth).
+* Prime-to-Subcontractor links (including Tier 2+ depth)
 
-* Agency-to-Contract awards.
+* Agency-to-Contract awards
 
-* Entity Resolution Logs for auditing LLM decision-making and token costs.
+* Entity Resolution Logs for auditing LLM decision-making and token costs
 
 ## Getting Started
 **Prerequisites**
