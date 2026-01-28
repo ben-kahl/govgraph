@@ -4,3 +4,6 @@ vpc_cidr                  = "10.0.0.0/16"
 enable_single_nat_gateway = true
 node_instance_type        = ["t3.medium"]
 node_capacity_type        = "SPOT"
+db_name                   = "gov-graph-db"
+db_username               = "govgraph"
+

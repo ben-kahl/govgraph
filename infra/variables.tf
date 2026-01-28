@@ -63,13 +63,13 @@ variable "node_capacity_type" {
 variable "db_name" {
   description = "Name of the PostgreSQL database"
   type        = string
-  default     = "govgraph"
+  default     = "gov-graph-db"
 }
 
 variable "db_username" {
   description = "Username for the database"
   type        = string
-  default     = "postgres"
+  default     = "govgraph"
 }
 
 variable "db_instance_class" {
