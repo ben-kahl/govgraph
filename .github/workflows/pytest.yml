@@ -36,7 +36,7 @@ jobs:
 
       - name: Output test results to PR conversation
         uses: actions/github-script@v6
-        if: github.event)name == 'pull_request'
+        if: github.event_name == 'pull_request'
         env:
           RESULTS: "pytest\n${{ steps.test.outputs.stdout }}"
         with:

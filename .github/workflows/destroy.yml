@@ -13,10 +13,9 @@ permissions:
 
 jobs:
   destroy:
-    if: inputs.confirmation == 'DESTROY'
-
+    # This ensures the job only runs if the user explicitly types DESTROY
+    if: ${{ github.event.inputs.confirmation == 'DESTROY' }}
     name: "Terraform Destroy"
-
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,21 +26,21 @@ jobs:
       run:
         working-directory: ./infra
 
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
 
-    - name: Configure AWS credentials via OIDC
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-        aws-region: us-east-1
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 # Updated to v3
 
-    - name: Terraform Init
-      run: terraform init
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Destroy
-      run: terraform destroy -auto-approve -var-file="dev.tfvars"
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve -var-file="dev.tfvars"
