@@ -59,15 +59,15 @@ The platform manages complex relationships including:
 
 * Clone the repository:
     ```Bash
-        git clone https://github.com/ben-kahl/gov-graph.git
-        cd gov-graph
+    git clone https://github.com/ben-kahl/gov-graph.git
+    cd gov-graph
     ```
 
 * Deploy Infrastructure (Development Profile):
     ```Bash
-        cd infra
-        terraform init
-        terraform apply -var-file="dev.tfvars"
+    cd infra
+    terraform init
+    terraform apply -var-file="dev.tfvars"
     ```
 
 * Connect to the Cluster:
