@@ -1,3 +1,20 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.28.0"
+    }
+  }
+
+  backend "s3" {
+    bucket       = "gov-graph-state"
+    key          = "dev/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -224,13 +241,13 @@ data "archive_file" "ingestion_zip" {
 
 # Lambda Function: Ingestion
 resource "aws_lambda_function" "ingestion_lambda" {
-  filename      = data.archive_file.ingestion_zip.output_path
-  function_name = "gov-graph-ingestion"
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "ingest_contracts.main" # Assuming main() is the entry point
+  filename         = data.archive_file.ingestion_zip.output_path
+  function_name    = "gov-graph-ingestion"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "ingest_contracts.main" # Assuming main() is the entry point
   source_code_hash = data.archive_file.ingestion_zip.output_base64sha256
-  runtime       = "python3.9"
-  timeout       = 300
+  runtime          = "python3.9"
+  timeout          = 300
 
   vpc_config {
     subnet_ids         = module.vpc.private_subnets
@@ -246,3 +263,4 @@ resource "aws_lambda_function" "ingestion_lambda" {
     }
   }
 }
+
