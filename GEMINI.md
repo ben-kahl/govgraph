@@ -5,7 +5,7 @@
 * Description: An OSINT supply chain intelligence platform for federal procurement analysis. Aggregates USAspending.gov contract data, uses LLMs(Amazon Bedrock) for entity resolution on vendor records, and builds a knowledge graph(Neo4j) to identify vendor relationships, subsidiaries, and contracting patterns."
 
 ## Key Features
-* AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude 3) to normalize inconsistent vendor names (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp") with 99% accuracy.
+* AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude Haiku 4.5) to normalize inconsistent vendor names (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp") with 99% accuracy.
 * Infrastructure as Code: Fully provisioned via Terraform with strict cost-control policies (Spot Instances, Single NAT Gateway) enforced via automated tests.
 *Kubernetes Native: Microservices architecture deployed on Amazon EKS with autoscaling based on queue depth (KEDA).
 
