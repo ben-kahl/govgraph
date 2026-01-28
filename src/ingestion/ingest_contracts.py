@@ -4,6 +4,7 @@ import requests
 import json
 import uuid
 import psycopg2
+import boto3
 from psycopg2.extras import Json
 
 # Configuration
@@ -13,17 +14,23 @@ SEARCH_ENDPOINT = "/search/spending_by_award/"
 # Database connection
 DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_NAME = os.environ.get("DB_NAME", "govgraph")
-DB_USER = os.environ.get("DB_USER", "postgres")
-DB_PASS = os.environ.get("DB_PASS", "password")
+
+
+def get_db_credentials(secret_arn):
+    client = boto3.client('secretsmanager')
+    response = client.get_secret_value(SecretId=secret_arn)
+    return json.loads(response['SecretString'])
 
 
 def get_db_connection():
     """Establishes a connection to the PostgreSQL database."""
+    secret_arn = os.environ.get("DB_SECRET_ARN")
+    creds = get_db_credentials(secret_arn)
     conn = psycopg2.connect(
         host=DB_HOST,
         database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS
+        user=creds['username'],
+        password=['password']
     )
     return conn
 

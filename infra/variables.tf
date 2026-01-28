@@ -72,15 +72,9 @@ variable "db_username" {
   default     = "postgres"
 }
 
-variable "db_password" {
-  description = "Password for the database"
-  type        = string
-  sensitive   = true
-  default     = "changeme123" # In prod, pass this via tfvars or env var
-}
-
 variable "db_instance_class" {
   description = "RDS Instance Class"
   type        = string
   default     = "db.t3.micro"
 }
+
