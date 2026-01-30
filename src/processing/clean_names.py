@@ -3,8 +3,9 @@ import json
 import os
 
 # Configuration
-BEDROCK_MODEL_ID = "anthropic.claude-haiku-4-5-20251001-v1:0"
-REGION_NAME = "us-east-1"
+BEDROCK_MODEL_ID = os.environ.get(
+    "BEDROCK_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
+REGION_NAME = os.environ.get("REGION_NAME", "us-east-1")
 
 
 def get_bedrock_client():
@@ -68,6 +69,35 @@ def standardize_name(messy_name):
     except Exception as e:
         print(f"Error calling Bedrock: {e}")
         return messy_name
+
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda entry point.
+    Can be invoked manually with {"name": "..."} or via SQS.
+    """
+    print(f"Received event: {json.dumps(event)}")
+
+    # Handle direct invocation
+    name_to_process = event.get("name")
+
+    # Handle SQS event (if applicable later)
+    if not name_to_process and "Records" in event:
+        # Just process the first record for this test
+        try:
+            body = json.loads(event["Records"][0]["body"])
+            name_to_process = body.get("name")
+        except:
+            pass
+
+    if not name_to_process:
+        return {"error": "No 'name' provided in event"}
+
+    cleaned = standardize_name(name_to_process)
+    return {
+        "original": name_to_process,
+        "standardized": cleaned
+    }
 
 
 if __name__ == "__main__":

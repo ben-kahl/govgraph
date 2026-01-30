@@ -24,14 +24,26 @@ def get_db_credentials(secret_arn):
 
 def get_db_connection():
     """Establishes a connection to the PostgreSQL database."""
-    secret_arn = os.environ.get("DB_SECRET_ARN")
-    creds = get_db_credentials(secret_arn)
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=creds['username'],
-        password=['password']
-    )
+    # Check for local credentials first
+    db_user = os.environ.get("DB_USER")
+    db_password = os.environ.get("DB_PASSWORD")
+
+    if db_user and db_password:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=db_user,
+            password=db_password
+        )
+    else:
+        secret_arn = os.environ.get("DB_SECRET_ARN")
+        creds = get_db_credentials(secret_arn)
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=creds['username'],
+            password=creds['password']
+        )
     return conn
 
 
@@ -146,7 +158,7 @@ def main():
     """Main execution flow."""
     # Calculate date range (yesterday)
     today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=7)
+    yesterday = today - datetime.timedelta(days=1)
     date_str = yesterday.strftime("%Y-%m-%d")
 
     print(f"Starting ingestion for date: {date_str}")
@@ -155,7 +167,7 @@ def main():
     print(f"Fetched {len(contracts)} contracts.")
     if contracts:
         print(contracts)
-        # store_raw_contracts(contracts)
+        store_raw_contracts(contracts)
 
 
 if __name__ == "__main__":

@@ -31,3 +31,34 @@ The `infra/main.tf` creates an RDS instance. You will need to apply the schema m
 ```bash
 psql -h <RDS_ENDPOINT> -U postgres -d govgraph -f src/db/schema.sql
 ```
+
+## Local Development & Testing
+
+### 1. Start a Local Database
+Use Docker to run a PostgreSQL 17 container:
+
+```bash
+docker run --name govgraph-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=govgraph -p 5432:5432 -d postgres:17
+```
+
+### 2. Apply Database Schema
+Apply the schema to the local database:
+
+```bash
+docker exec -i govgraph-postgres psql -U postgres -d govgraph < src/db/schema.sql
+```
+
+### 3. Run Ingestion Script Locally
+To test the ingestion pipeline without AWS dependencies, set the following environment variables:
+
+```bash
+export DB_HOST=localhost
+export DB_NAME=govgraph
+export DB_USER=postgres
+export DB_PASSWORD=postgres
+
+# Run using the project's virtual environment
+python src/ingestion/ingest_contracts.py
+```
+
+The script will detect these environment variables and bypass AWS Secrets Manager.
