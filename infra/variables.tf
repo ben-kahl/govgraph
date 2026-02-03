@@ -69,7 +69,7 @@ variable "node_capacity_type" {
 variable "db_name" {
   description = "Name of the PostgreSQL database"
   type        = string
-  default     = "gov-graph-db"
+  default     = "govgraphdb"
 }
 
 variable "db_username" {

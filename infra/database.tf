@@ -8,8 +8,8 @@ module "db" {
 
   identifier = "gov-graph-postgres-db"
 
-  engine                   = "postgresql"
-  engine_version           = "17.1"
+  engine                   = "postgres"
+  engine_version           = "17.6"
   engine_lifecycle_support = "open-source-rds-extended-support-disabled"
   family                   = "postgres17"
   major_engine_version     = "17"
@@ -28,7 +28,7 @@ module "db" {
 
   skip_final_snapshot = true
   publicly_accessible = false
-  
+
   # Postgres 17 usually doesn't require a custom option group for basic usage
   create_db_option_group = false
 
