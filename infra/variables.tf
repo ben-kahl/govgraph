@@ -32,6 +32,12 @@ variable "vpc_public_subnets" {
   default     = ["10.0.101.0/24", "10.0.102.0/24"]
 }
 
+variable "vpc_database_subnets" {
+  description = "Database Subnet CIDRs"
+  type        = list(string)
+  default     = ["10.0.21.0/24", "10.0.22.0/24"]
+}
+
 variable "enable_single_nat_gateway" {
   description = "Enable Single NAT Gateway to save costs (True = Cheap, False = High Availability)"
   type        = bool
