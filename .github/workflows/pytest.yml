@@ -32,7 +32,6 @@ jobs:
       - name: Test with pytest
         id: test
         run: |
-          cd src/
           python -m pytest
 
       - name: Output test results to PR conversation
