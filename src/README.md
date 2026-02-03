@@ -62,3 +62,23 @@ python src/ingestion/ingest_contracts.py
 ```
 
 The script will detect these environment variables and bypass AWS Secrets Manager.
+
+### 4. Start Neo4j (Graph DB)
+Run a local Neo4j instance for the knowledge graph:
+
+```bash
+docker run --name govgraph-neo4j -e NEO4J_AUTH=neo4j/password -p 7474:7474 -p 7687:7687 -d neo4j:5
+```
+
+Access the Neo4j Browser at [http://localhost:7474](http://localhost:7474).
+
+### 5. Run Graph Sync
+Sync data from PostgreSQL to Neo4j:
+
+```bash
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=password
+
+python src/processing/sync_to_graph.py
+```
