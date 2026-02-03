@@ -14,11 +14,12 @@ module "lambda_layer" {
       path             = "${path.module}/../src"
       prefix_in_layer  = "python"
       patterns         = ["lambda_requirements.txt"]
-      pip_requirements = "lambda_requirements.txt"
+      pip_requirements = "${path.module}/../src/lambda_requirements.txt"
     }
   ]
 
-  build_in_docker = false
+  runtime         = "python3.9"
+  build_in_docker = true
 
   compatible_runtimes = ["python3.9"]
 }
