@@ -28,6 +28,9 @@ module "db" {
 
   skip_final_snapshot = true
   publicly_accessible = false
+  
+  # Postgres 17 usually doesn't require a custom option group for basic usage
+  create_db_option_group = false
 
   tags = {
     Terraform   = "true"

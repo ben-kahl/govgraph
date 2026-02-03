@@ -8,13 +8,16 @@ module "lambda_layer" {
   create_layer = true
   layer_name   = "gov-graph-dependencies"
   description  = "Layer for requests and psycopg2-binary"
+  
   source_path = [
     {
       path            = "${path.module}/../src"
       prefix_in_layer = "python"
-      patterns        = ["requirements.txt"]
+      patterns        = ["lambda_requirements.txt"]
+      pip_requirements = "lambda_requirements.txt"
     }
   ]
+  
   build_in_docker = true
 
   compatible_runtimes = ["python3.9"]
@@ -35,7 +38,7 @@ module "ingestion_lambda" {
   source_path = "${path.module}/../src/ingestion"
 
   vpc_subnet_ids         = module.vpc.private_subnets
-  vpc_security_group_ids = module.security_group.security_group_id
+  vpc_security_group_ids = [module.security_group.security_group_id]
   attach_network_policy  = true
 
   environment_variables = {
@@ -92,7 +95,7 @@ module "processing_lambda" {
   source_path = "${path.module}/../src/processing"
 
   vpc_subnet_ids         = module.vpc.private_subnets
-  vpc_security_group_ids = module.security_group.security_group_id
+  vpc_security_group_ids = [module.security_group.security_group_id]
   attach_network_policy  = true
 
   environment_variables = {
