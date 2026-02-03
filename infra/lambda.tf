@@ -8,17 +8,17 @@ module "lambda_layer" {
   create_layer = true
   layer_name   = "gov-graph-dependencies"
   description  = "Layer for requests and psycopg2-binary"
-  
+
   source_path = [
     {
-      path            = "${path.module}/../src"
-      prefix_in_layer = "python"
-      patterns        = ["lambda_requirements.txt"]
+      path             = "${path.module}/../src"
+      prefix_in_layer  = "python"
+      patterns         = ["lambda_requirements.txt"]
       pip_requirements = "lambda_requirements.txt"
     }
   ]
-  
-  build_in_docker = true
+
+  build_in_docker = false
 
   compatible_runtimes = ["python3.9"]
 }
