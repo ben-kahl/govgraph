@@ -67,12 +67,44 @@ The next phase of the project is to build out the backend data pipeline
     * Add the `aws_lambda_function` and `aws_sqs_queue` resources to your Terraform.
     * *Success:* `terraform apply` creates the queue.
 
+#### **Phase 2: Source of Truth(PostgreSQL) and Knowledge Graph(Neo4j) creation and synchronization**
+*Focus: Store data in both the RDS database and the Graph DB(Neo4j) graph database in a queryable structure*
+
+* **Task 2.1: Create Databases**
+    * Use Database Schema Context to create both databases
+    * Create local testing environment
+    * Initialize a historical source of truth with at least 6 months of data for testing
+* **Task 2.2: Update Python scripts**
+    * Update python scripts to push data to postgres db
+    * Ensure synchronization between databases with sqs/celery
+
+#### **Phase 3: API and Deployment(Kubernetes)**
+*Focus: Exposing the data to the world.*
+
+* **Task 3.1: FastAPI Wrapper**
+    * Create a simple API: `GET /search?q=Lockheed`.
+    * It queries the Graph DB and returns the connections.
+* **Task 3.2: Dockerize**
+    * Create `Dockerfile` for your Worker and your API.
+    * Push to Amazon ECR (Elastic Container Registry).
+* **Task 3.3: Helm Charts**
+    * Write the K8s manifests (`deployment.yaml`, `service.yaml`) to run your containers on EKS.
+
+#### **Phase 4: Frontend Visualization(Next.js)**
+*Focus: Creating an interactive dashboard with React Flow for users to interact with data.*
+
+* **Task 4.1: Landing page**
+    * Create a simple landing page with an explaination of the project and a login page
+    * Use OAuth for authentication
+* **Task 4.2: React Flow Visualization**
+    * Using the AuraDB graph database, create a mvp of a subset of the graph data visualizing the connections between nodes
+
 
 ## Repo Structure
 ```text
 gov-graph/
 ├── .github/workflows/    # CI/CD
-├── infra/                # Terraform (Move your current files here)
+├── infra/                # Terraform
 ├── src/
 │   ├── ingestion/        # Lambda scripts
 │   ├── processing/       # Bedrock/Worker scripts
@@ -689,5 +721,5 @@ for batch in chunks(unsynced, 1000):
 
 ## Schema Version
 **Version**: 1.0  
-**Last Updated**: 2024-01-26  
+**Last Updated**: 2026-01-26  
 **Compatible With**: PostgreSQL 14+, Neo4j 5.x (AuraDB)
