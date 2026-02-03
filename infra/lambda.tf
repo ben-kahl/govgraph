@@ -14,7 +14,7 @@ module "lambda_layer" {
       path             = "${path.module}/../src"
       prefix_in_layer  = "python"
       patterns         = ["lambda_requirements.txt"]
-      pip_requirements = "${path.module}/../src/lambda_requirements.txt"
+      pip_requirements = true
     }
   ]
 
@@ -22,6 +22,9 @@ module "lambda_layer" {
   build_in_docker = true
 
   compatible_runtimes = ["python3.9"]
+  artifacts_dir       = "${path.root}/builds"
+  store_on_s3         = true
+  s3_bucket           = aws_s3_bucket.lambda_builds.bucket
 }
 
 module "ingestion_lambda" {
@@ -125,6 +128,103 @@ module "processing_lambda" {
           module.sqs.queue_arn,
           module.db.db_instance_master_user_secret_arn,
           "*"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
+module "sync_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-sync"
+  description   = "Syncs cleaned data from Postgres to Neo4j"
+  handler       = "sync_to_graph.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 900 # Longer timeout for batch processing
+
+  layers = [module.lambda_layer.lambda_layer_arn]
+
+  source_path = "${path.module}/../src/processing"
+
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  attach_network_policy  = true
+
+  environment_variables = {
+    DB_HOST          = module.db.db_instance_address
+    DB_NAME          = var.db_name
+    DB_USER          = var.db_username
+    DB_SECRET_ARN    = module.db.db_instance_master_user_secret_arn
+    NEO4J_SECRET_ARN = aws_secretsmanager_secret.neo4j_credentials.arn
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          module.db.db_instance_master_user_secret_arn,
+          aws_secretsmanager_secret.neo4j_credentials.arn
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
+module "schema_migration_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-schema-migration"
+  description   = "Applies database schema to RDS"
+  handler       = "apply_schema.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 60
+
+  layers = [module.lambda_layer.lambda_layer_arn]
+
+  source_path   = "${path.module}/../src/db"
+  artifacts_dir = "${path.root}/builds"
+
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  attach_network_policy  = true
+
+  environment_variables = {
+    DB_HOST       = module.db.db_instance_address
+    DB_NAME       = var.db_name
+    DB_USER       = var.db_username
+    DB_SECRET_ARN = module.db.db_instance_master_user_secret_arn
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          module.db.db_instance_master_user_secret_arn
         ]
       }
     ]
