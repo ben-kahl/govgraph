@@ -1,725 +1,447 @@
 # Project: GovGraph
 
-## Project information
-* Project name: GovGraph
-* Description: An OSINT supply chain intelligence platform for federal procurement analysis. Aggregates USAspending.gov contract data, uses LLMs(Amazon Bedrock) for entity resolution on vendor records, and builds a knowledge graph(Neo4j) to identify vendor relationships, subsidiaries, and contracting patterns."
+## Project Information
+* **Project Name:** GovGraph
+* **Description:** An OSINT supply chain intelligence platform for federal procurement analysis. Aggregates USAspending.gov contract data, uses LLMs (Amazon Bedrock) for entity resolution on vendor records, and builds a knowledge graph (Neo4j) to identify vendor relationships, subsidiaries, and contracting patterns.
 
 ## Key Features
-* AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude Haiku 4.5) to normalize inconsistent vendor names (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp") with 99% accuracy.
-* Infrastructure as Code: Fully provisioned via Terraform with strict cost-control policies (Spot Instances, Single NAT Gateway) enforced via automated tests.
-*Kubernetes Native: Microservices architecture deployed on Amazon EKS with autoscaling based on queue depth (KEDA).
+* **AI-Driven Entity Resolution:** Utilizes Amazon Bedrock (Claude Haiku 4.5) via a 4-tier resolution strategy (DUNS/UEI → exact match → fuzzy matching → LLM) to normalize inconsistent vendor names with 95%+ accuracy while reducing LLM costs by 95%
+* **Infrastructure as Code:** Fully provisioned via Terraform with strict cost-control policies (serverless architecture, VPC endpoints, selective Neo4j sync) targeting <$15/month operational costs
+* **Serverless Event-Driven Architecture:** Lambda-based microservices with SQS message queuing, DynamoDB caching, and automatic scaling based on queue depth
+* **Polyglot Persistence:** Combines PostgreSQL (relational integrity), DynamoDB (caching), S3 (data lake), and Neo4j (graph analytics) for optimal data storage strategies
 
 ## Tech Stack
-* Infrastructure: AWS EKS, Terraform, Docker, Helm
-* Backend: Python(FastAPI), Boto3, Celery/SQS
-* Data & AI: AuraDB free tier(Neo4j), AWS RDS(PostgreSQL), Amazon Bedrock(LLM), Pandas
-* Frontend: Next.js, React Flow(Graph Visualization), Tailwind CSS
-* CI/CD: Github Actions, pytest
-
-## Code Style
-* PEP 8 compliant style for python files
-* Robust unit and integration testing is essential
-
-## Installation & Deployment
-This project uses a "GitOps" workflow. Infrastructure changes are applied automatically on merge to main.
-
-Prerequisites:
-* AWS CLI configured
-* Terraform v1.6+
-* Kubectl
-
-Local Development:
-
-1. Clone the repo
-git clone [https://github.com/ben-kahl/gov-graph.git](https://github.com/ben-kahl/gov-graph.git)
-
-2. Deploy Infra (Dev Profile)
-terraform init
-terraform apply -var-file="dev.tfvars"
-
-3. Connect to Cluster
-aws eks update-kubeconfig --region us-east-1 --name gov-graph-cluster
-
-## Agent Persona & Behavior
-*   Tone: Be professional, direct, and concise. Avoid conversational filler.
-*   Process: When a task is requested, first generate a plan (`PLAN.md` file) and ask for approval before implementing any code changes.
-*   Output: Ensure all new functions and classes have PEP 257 compliant documentation
-*   Priorities: This is a resume project. Prioritize keeping costs low or within free tiers.
-
-## Implementation Plan
-Currently, the core eks infrastructure has been completed in ./infra/main.tf
-The next phase of the project is to build out the backend data pipeline
-#### **Phase 1: The "Dirty Data" Pipeline (Backend Logic)**
-*Focus: Getting data, cleaning it with AI, and printing it to the console.*
-
-* **Task 1.1: The Scraper (Lambda)**
-    * Write a Python script that hits the `USAspending` API for yesterday's contracts.
-    * Store raw contract data in RDS database
-    * Once this works, create a lambda function to run this as a daily cron job
-    * *Success:* It stores contract data in RDS db.
-    * *Tech:* Python, `requests`.
-* **Task 1.2: The Cleaner (Bedrock Integration)**
-    * Write a Python function that takes a "Messy Name" and sends it to Amazon Bedrock (Claude).
-    * *Prompt:* "Standardize this company name. 'L.M. Corp' -> 'Lockheed Martin'."
-    * *Success:* You input "Boeing Co." and get back "The Boeing Company".
-    * *Tech:* `boto3`.
-* **Task 1.3: The Infrastructure (Terraform Update)**
-    * Add the `aws_lambda_function` and `aws_sqs_queue` resources to your Terraform.
-    * *Success:* `terraform apply` creates the queue.
-
-#### **Phase 2: Source of Truth(PostgreSQL) and Knowledge Graph(Neo4j) creation and synchronization**
-*Focus: Store data in both the RDS database and the Graph DB(Neo4j) graph database in a queryable structure*
-
-* **Task 2.1: Create Databases**
-    * Use Database Schema Context to create both databases
-    * Create local testing environment
-    * Initialize a historical source of truth with at least 6 months of data for testing
-* **Task 2.2: Update Python scripts**
-    * Update python scripts to push data to postgres db
-    * Ensure synchronization between databases with sqs/celery
-
-#### **Phase 3: API and Deployment(Kubernetes)**
-*Focus: Exposing the data to the world.*
-
-* **Task 3.1: FastAPI Wrapper**
-    * Create a simple API: `GET /search?q=Lockheed`.
-    * It queries the Graph DB and returns the connections.
-* **Task 3.2: Dockerize**
-    * Create `Dockerfile` for your Worker and your API.
-    * Push to Amazon ECR (Elastic Container Registry).
-* **Task 3.3: Helm Charts**
-    * Write the K8s manifests (`deployment.yaml`, `service.yaml`) to run your containers on EKS.
-
-#### **Phase 4: Frontend Visualization(Next.js)**
-*Focus: Creating an interactive dashboard with React Flow for users to interact with data.*
-
-* **Task 4.1: Landing page**
-    * Create a simple landing page with an explaination of the project and a login page
-    * Use OAuth for authentication
-* **Task 4.2: React Flow Visualization**
-    * Using the AuraDB graph database, create a mvp of a subset of the graph data visualizing the connections between nodes
-
-
-## Repo Structure
-```text
-gov-graph/
-├── .github/workflows/    # CI/CD
-├── infra/                # Terraform
-├── src/
-│   ├── ingestion/        # Lambda scripts
-│   ├── processing/       # Bedrock/Worker scripts
-│   ├── api/              # FastAPI
-│   └── dashboard/        # Next.js
-├── tests/                # Tests
-└── README.md
-```
-
-# GovGraph Database Schema Context
-
-This document provides complete database schema information for the GovGraph supply chain intelligence platform. Use this as context when generating code, queries, or documentation.
-
----
+* **Infrastructure:** AWS Lambda, SQS, RDS, DynamoDB, S3, VPC Endpoints, EventBridge, Terraform
+* **Backend:** Python (asyncio), Boto3, psycopg2, RapidFuzz
+* **Data & AI:** AuraDB free tier (Neo4j), AWS RDS (PostgreSQL), Amazon Bedrock (Claude Haiku 4.5), Pandas
+* **Frontend:** Next.js, Cytoscape.js (Network Graph Visualization), Tailwind CSS, Framer Motion, Headless UI, next-themes
+* **CI/CD:** GitHub Actions, pytest, Terraform Cloud
 
 ## Architecture Overview
 
-GovGraph uses a **polyglot persistence** architecture:
-
-- **PostgreSQL (RDS)**: Source of truth for raw and cleaned contract data, ETL tracking, entity resolution logs
-- **Neo4j (AuraDB)**: Knowledge graph for relationship analysis, pattern detection, and graph visualization
-
-**Data Flow**: USAspending API → Postgres (raw) → LLM Entity Resolution → Postgres (cleaned) → Neo4j (graph projection)
-
----
-
-## PostgreSQL Schema
-
-### Core Tables
-
-#### `raw_contracts`
-Landing zone for raw API data from USAspending.gov.
-
-```sql
-CREATE TABLE raw_contracts (
-    id UUID PRIMARY KEY,
-    usaspending_id VARCHAR(255) UNIQUE NOT NULL,
-    raw_payload JSONB NOT NULL,
-    ingested_at TIMESTAMP WITH TIME ZONE,
-    processed BOOLEAN DEFAULT FALSE,
-    processing_errors TEXT
-);
+### Data Flow
+```
+EventBridge Schedule (Daily 6am UTC)
+    ↓
+Lambda Scraper → S3 (archival) + SQS (raw contracts queue)
+    ↓
+Lambda Entity Resolver (SQS-triggered, 10 concurrent)
+    ├─→ DynamoDB (entity resolution cache)
+    ├─→ Bedrock (LLM for novel entities, ~5% of requests)
+    └─→ RDS PostgreSQL (cleaned, structured data)
+    ↓
+Lambda Neo4j Syncer (triggered by DynamoDB Streams)
+    └─→ Neo4j AuraDB (selective graph projection)
 ```
 
-**Purpose**: Store unprocessed API responses for auditability and reprocessing.
+### Key Design Decisions
+* **Serverless-First:** Eliminated Kubernetes/EKS to reduce costs from $126/month to <$15/month
+* **4-Tier Entity Resolution:** DUNS/UEI exact match (40%) → canonical name match (20%) → fuzzy matching (30%) → DynamoDB cache (5%) → Bedrock LLM (5%)
+* **VPC Endpoints:** Replaced NAT Gateway ($33/month) with VPC endpoints ($7/month) for AWS service access
+* **Selective Neo4j Sync:** Only sync vendors with >$1M contract value to stay within free tier limits (50K nodes, 175K relationships)
+* **S3 Data Lake:** Archive raw USAspending JSON for reprocessing and historical analysis
 
----
+## Code Style
+* PEP 8 compliant style for Python files
+* Type hints for all function signatures
+* Comprehensive docstrings (PEP 257)
+* Robust unit and integration testing (>80% coverage target)
 
-#### `vendors`
-Canonical vendor records after LLM entity resolution.
+## Installation & Deployment
 
+### Prerequisites
+* AWS CLI configured with appropriate IAM permissions
+* Terraform v1.6+
+* Python v3.11+
+* PostgreSQL client (for local DB access)
+
+### Local Development
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/ben-kahl/govgraph.git
+   cd govgraph
+   ```
+
+2. **Set up Terraform backend:**
+   ```bash
+   cd infra
+   terraform init
+   ```
+
+3. **Deploy infrastructure (Dev environment):**
+   ```bash
+   terraform workspace new dev
+   terraform apply -var-file="dev.tfvars"
+   ```
+
+4. **Initialize database schema:**
+   ```bash
+   python scripts/init_db.py
+   ```
+
+5. **Deploy Lambda functions:**
+   ```bash
+   ./deploy.sh
+   ```
+
+### CI/CD Workflow
+This project uses GitOps. Infrastructure and code changes are automatically deployed on merge to `main`:
+* **Pull Requests:** Terraform plan, unit tests, integration tests
+* **Main Branch:** Automated Terraform apply, Lambda deployment
+
+## Agent Persona & Behavior
+* **Tone:** Be professional, direct, and concise. Avoid conversational filler.
+* **Process:** When a task is requested, first generate a plan (`PLAN.md` file) and ask for approval before implementing any code changes.
+* **Output:** Ensure all new functions and classes have PEP 257 compliant docstrings with type hints
+* **Priorities:** This is a resume project. Prioritize:
+  1. Keeping costs low (target <$15/month, max $30/month)
+  2. Demonstrating modern cloud architecture skills
+  3. Building a sleek, modern UI that looks professional (glassmorphism, dark mode, smooth animations)
+  4. Code quality and testing over speed of delivery
+
+## Implementation Plan
+
+### Current Status
+* [x] System design completed (serverless architecture)
+* [x] Terraform backend configured
+* [ ] Phase 1: ETL Backend Pipeline
+
+### Phase 1: Data Pipeline (Serverless)
+**Focus:** Ingest, clean, and store contract data using Lambda-based event-driven architecture
+
+* **Task 1.1: Lambda Scraper**
+  * Create EventBridge scheduled rule (daily 6am UTC trigger)
+  * Implement Lambda function to fetch USAspending API data with pagination handling
+  * Store raw JSON in S3 for archival (s3://govgraph-raw-data/YYYY-MM-DD/contracts.json)
+  * Send individual contracts to SQS queue in batches of 10
+  * *Success:* Daily ingestion completes in <15 minutes, stores raw data in S3 and SQS
+  * *Tech:* Python, boto3, requests, AWS Lambda, SQS, S3
+
+* **Task 1.2: Entity Resolution Lambda**
+  * Implement 4-tier resolution strategy:
+    1. DUNS/UEI exact match (DB query)
+    2. Canonical name exact match (DB query)
+    3. Fuzzy matching with RapidFuzz (in-memory)
+    4. DynamoDB cache lookup
+    5. Bedrock LLM resolution (fallback)
+  * Configure SQS trigger with batch size of 10
+  * Set up DynamoDB table for entity cache (TTL: 90 days)
+  * *Success:* Processes 500 contracts in ~5 minutes, <5% require LLM calls
+  * *Tech:* Python, boto3, psycopg2, RapidFuzz, Amazon Bedrock
+
+* **Task 1.3: RDS PostgreSQL Setup**
+  * Provision db.t3.micro instance in private subnet
+  * Create database schema with monthly partitioning
+  * Implement indexes for performance (vendor canonical name, DUNS, UEI, contract dates)
+  * Store credentials in AWS Secrets Manager
+  * *Success:* Schema deployed, Lambda can connect via VPC, query latency <100ms
+  * *Tech:* Terraform, PostgreSQL, AWS RDS, Secrets Manager
+
+* **Task 1.4: VPC & Networking**
+  * Create VPC with 2 private subnets (no NAT Gateway)
+  * Configure VPC endpoints: S3 (Gateway), DynamoDB (Gateway), Bedrock (Interface)
+  * Set up security groups: Lambda → RDS (port 5432)
+  * *Success:* Lambda functions access AWS services without internet egress costs
+  * *Tech:* Terraform, AWS VPC, VPC Endpoints
+
+* **Task 1.5: Monitoring & Alerting**
+  * Create CloudWatch dashboard (Lambda metrics, SQS depth, RDS connections)
+  * Configure SQS Dead Letter Queue with CloudWatch alarm
+  * Set up AWS Budget alert at $20/month threshold
+  * *Success:* Real-time visibility into pipeline health, cost alerts configured
+  * *Tech:* CloudWatch, SNS, AWS Budgets
+
+### Phase 2: Source of Truth (PostgreSQL) and Knowledge Graph (Neo4j) Synchronization
+**Focus:** Sync cleaned data from PostgreSQL to Neo4j for graph analytics
+
+* **Task 2.1: Neo4j Selective Sync Strategy**
+  * Identify high-value vendors (>$1M total contract value)
+  * Create sync tracking table in PostgreSQL
+  * Implement idempotent MERGE operations for Neo4j
+  * *Success:* Stay within 50K node limit while capturing 80% of analytical value
+
+* **Task 2.2: Lambda Neo4j Syncer**
+  * Trigger via DynamoDB Streams (on entity resolution completion)
+  * Batch sync vendors and contracts to Neo4j
+  * Update sync status in PostgreSQL
+  * *Success:* New vendors appear in graph within 5 minutes of resolution
+
+* **Task 2.3: Historical Data Backfill**
+  * Load 6 months of USAspending data for testing
+  * Run backfill sync to populate Neo4j
+  * Validate graph relationships (vendor → contract → agency)
+  * *Success:* 6 months of data loaded, graph queries return accurate results
+
+### Phase 3: API and Deployment
+**Focus:** Expose data via REST API and deploy frontend
+
+* **Task 3.1: FastAPI Lambda**
+  * Create API routes: /search, /vendor/{id}, /contracts/{id}
+  * Implement pagination, filtering, sorting
+  * Add Redis caching layer (ElastiCache) for frequent queries
+  * *Success:* API returns results in <200ms, handles 100 req/min
+  * *Tech:* FastAPI, Mangum (Lambda adapter), API Gateway
+
+* **Task 3.2: Authentication & Rate Limiting**
+  * Implement OAuth 2.0 with Auth0 or AWS Cognito
+  * Add API key-based rate limiting (slowapi)
+  * Configure CORS for frontend domain
+  * *Success:* Secure API with per-user rate limits
+
+* **Task 3.3: API Documentation**
+  * Auto-generate OpenAPI spec from FastAPI
+  * Deploy Swagger UI endpoint
+  * *Success:* Interactive API documentation available
+
+### Phase 4: Frontend Visualization (Next.js)
+**Focus:** Create interactive dashboard with graph visualization
+
+* **Task 4.1: Landing Page**
+  * Build landing page with project explanation
+  * Implement OAuth login with NextAuth.js
+  * *Success:* Users can sign in and access dashboard
+  * *Tech:* Next.js, NextAuth.js, Tailwind CSS
+
+* **Task 4.2: Cytoscape.js Network Graph Visualization**
+  * Create vendor relationship network graph using Cytoscape.js
+  * Build modern UI wrapper with glassmorphic sidebar, floating controls, and node details drawer
+  * Implement interactive features: zoom, pan, node selection, force-directed layout
+  * Add filters (contract value, date range, agency) in sidebar
+  * Style with dark mode, data-driven node sizing, smooth animations
+  * Optimize for 1000+ node rendering with progressive loading
+  * *Success:* Interactive network graph visualizes supply chain relationships with sleek, modern UI
+  * *Tech:* Cytoscape.js, react-cytoscapejs, Next.js, Tailwind CSS, Framer Motion
+
+* **Task 4.3: Dashboard Analytics**
+  * Top vendors by contract value (table)
+  * Contract timeline visualization (chart)
+  * Agency spending breakdown (pie chart)
+  * *Success:* Comprehensive analytics dashboard
+  * *Tech:* Recharts, Next.js
+
+### Frontend Design Goals
+**Visual Identity:** Modern, professional, data-focused aesthetic suitable for a SaaS product
+
+**Key UI Patterns:**
+* **Glassmorphism:** Semi-transparent panels with backdrop blur for depth and hierarchy
+* **Dark Mode First:** Design for dark backgrounds with bright data visualizations
+* **Smooth Animations:** Framer Motion for panel transitions, hover states, and loading states
+* **Data-Driven Styling:** Node sizes, edge widths, and colors map to contract values and relationships
+* **Progressive Disclosure:** Show high-level overview, reveal details on interaction
+* **Responsive Layout:** Mobile-friendly sidebar collapse, touch-friendly graph controls
+
+**Component Architecture:**
+```
+<GraphDashboard> (full viewport container)
+  ├─ <Sidebar> (glassmorphic panel: search, filters, stats)
+  ├─ <CytoscapeGraph> (main canvas: network visualization)
+  ├─ <ControlPanel> (floating: zoom, layout, export buttons)
+  └─ <NodeDetailsDrawer> (slide-out: vendor details, contract list)
+```
+
+**Color Palette:**
+* Background: Slate-900 gradient
+* Primary: Blue-500 (nodes, accents)
+* Secondary: Slate-400 (edges, text)
+* Glass: White/10 with 16px blur
+* Success: Emerald-500
+* Warning: Amber-500
+
+**Typography:**
+* Headings: Inter Bold
+* Body: Inter Regular
+* Monospace: JetBrains Mono (for IDs, codes)
+
+**Reference Inspiration:**
+* Neo4j Bloom (graph visualization)
+* Notion (clean panels and typography)
+* Linear (glassmorphism and animations)
+* Vercel Dashboard (dark mode aesthetic)
+
+## Repository Structure
+```text
+govgraph/
+├── .github/workflows/          # CI/CD pipelines
+│   ├── deploy.yml              # Automated deployment
+│   └── test.yml                # Unit and integration tests
+├── infra/                      # Terraform infrastructure
+│   ├── main.tf                 # Root configuration
+│   ├── lambda.tf               # Lambda functions
+│   ├── rds.tf                  # PostgreSQL database
+│   ├── vpc.tf                  # VPC and networking
+│   ├── sqs.tf                  # Message queues
+│   ├── monitoring.tf           # CloudWatch dashboards
+│   ├── variables.tf            # Input variables
+│   ├── outputs.tf              # Output values
+│   ├── dev.tfvars              # Dev environment config
+│   ├── prod.tfvars             # Prod environment config
+│   └── scripts/
+│       └── init_db.py          # Database schema migration
+├── src/
+│   ├── ingestion/              # Data ingestion Lambda
+│   │   ├── scraper.py          # USAspending API scraper
+│   │   └── requirements.txt
+│   ├── processing/             # Entity resolution Lambda
+│   │   ├── entity_resolver.py  # 4-tier resolution logic
+│   │   └── requirements.txt
+│   ├── sync/                   # Neo4j sync Lambda
+│   │   ├── neo4j_syncer.py     # Graph database sync
+│   │   └── requirements.txt
+│   ├── api/                    # FastAPI service
+│   │   ├── main.py             # API routes
+│   │   ├── models.py           # Pydantic models
+│   │   ├── database.py         # DB connection
+│   │   └── requirements.txt
+│   └── dashboard/              # Next.js frontend
+│       ├── pages/              # Next.js pages
+│       │   ├── index.tsx       # Landing page
+│       │   └── dashboard.tsx   # Main graph dashboard
+│       ├── components/         # React components
+│       │   ├── GraphDashboard.tsx      # Main container
+│       │   ├── Sidebar.tsx             # Filters and search
+│       │   ├── CytoscapeGraph.tsx      # Network visualization
+│       │   ├── ControlPanel.tsx        # Graph controls
+│       │   └── NodeDetailsDrawer.tsx   # Vendor details
+│       ├── lib/                # Utilities
+│       │   ├── cytoscape-styles.ts     # Graph stylesheet
+│       │   └── api-client.ts           # API integration
+│       └── package.json
+├── tests/                      # Test suite
+│   ├── unit/
+│   │   ├── test_scraper.py
+│   │   └── test_resolver.py
+│   └── integration/
+│       └── test_pipeline.py
+├── deploy.sh                   # Build and deploy script
+├── SYSTEM_DESIGN.md            # Architecture documentation
+├── GEMINI.md                   # Project context (this file)
+└── README.md                   # Public documentation
+```
+
+## Database Schema Context
+
+### PostgreSQL Tables
+
+**vendors**
 ```sql
 CREATE TABLE vendors (
     id UUID PRIMARY KEY,
+    canonical_name VARCHAR(500) UNIQUE NOT NULL,
     duns VARCHAR(20),
     uei VARCHAR(20),
-    canonical_name VARCHAR(500) NOT NULL,
-    legal_name VARCHAR(500),
-    doing_business_as TEXT[],
-    vendor_type VARCHAR(50),
-    
-    -- Location
-    address_line1 VARCHAR(255),
-    city VARCHAR(100),
-    state VARCHAR(2),
-    zip_code VARCHAR(10),
-    country VARCHAR(3) DEFAULT 'USA',
-    
-    -- Classification
-    business_types TEXT[],
-    naics_codes VARCHAR(10)[],
-    psc_codes VARCHAR(10)[],
-    
-    -- Entity Resolution
-    resolution_confidence DECIMAL(3,2),
     resolved_by_llm BOOLEAN DEFAULT FALSE,
+    resolution_confidence DECIMAL(3,2),
     alternative_names TEXT[],
-    matched_vendor_ids UUID[],
-    
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE
 );
 ```
 
-**Key Fields**:
-- `canonical_name`: The resolved, standardized vendor name (e.g., "Lockheed Martin Corporation")
-- `resolution_confidence`: 0.00-1.00 score from LLM entity matching
-- `alternative_names`: All name variations found in source data
-- `naics_codes`: Array of North American Industry Classification codes
-- `business_types`: Small Business, Veteran-Owned, etc.
-
----
-
-#### `agencies`
-Government entities that award contracts.
-
-```sql
-CREATE TABLE agencies (
-    id UUID PRIMARY KEY,
-    agency_code VARCHAR(10) UNIQUE NOT NULL,
-    agency_name VARCHAR(500) NOT NULL,
-    department VARCHAR(255),
-    agency_type VARCHAR(100),
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
-```
-
-**Example Values**:
-- `agency_code`: "9700" (DoD), "8000" (NASA), "6900" (DOT)
-- `agency_type`: "Federal", "Independent", "Legislative"
-
----
-
-#### `contracts`
-Core contract/award transaction data.
-
+**contracts (partitioned by signed_date)**
 ```sql
 CREATE TABLE contracts (
-    id UUID PRIMARY KEY,
+    id UUID,
     contract_id VARCHAR(255) UNIQUE NOT NULL,
     vendor_id UUID REFERENCES vendors(id),
-    agency_id UUID REFERENCES agencies(id),
-    parent_contract_id UUID REFERENCES contracts(id),
-    
     description TEXT,
     award_type VARCHAR(100),
-    contract_type VARCHAR(100),
-    
-    -- Financial
     obligated_amount DECIMAL(15,2),
-    base_amount DECIMAL(15,2),
-    total_value DECIMAL(15,2),
-    
-    -- Dates
     signed_date DATE,
-    start_date DATE,
-    end_date DATE,
-    current_end_date DATE,
-    
-    -- Classification
-    naics_code VARCHAR(10),
-    psc_code VARCHAR(10),
-    place_of_performance_state VARCHAR(2),
-    
-    is_subcontract BOOLEAN DEFAULT FALSE,
-    raw_contract_id UUID REFERENCES raw_contracts(id),
-    
+    resolution_method VARCHAR(50),
+    resolution_confidence DECIMAL(3,2),
     created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
+    PRIMARY KEY (id, signed_date)
+) PARTITION BY RANGE (signed_date);
 ```
 
-**Key Fields**:
-- `obligated_amount`: Actual money obligated on this contract
-- `total_value`: Potential total value including all options
-- `parent_contract_id`: Links contract modifications/amendments
-- `naics_code`: Industry classification (e.g., "336411" = Aircraft Manufacturing)
-- `psc_code`: Product/Service code (e.g., "1520" = Aircraft, Fixed Wing)
-
----
-
-#### `subcontracts`
-Prime contractor → subcontractor relationships.
-
-```sql
-CREATE TABLE subcontracts (
-    id UUID PRIMARY KEY,
-    prime_contract_id UUID REFERENCES contracts(id),
-    prime_vendor_id UUID REFERENCES vendors(id),
-    subcontractor_vendor_id UUID REFERENCES vendors(id),
-    subcontract_amount DECIMAL(15,2),
-    subcontract_description TEXT,
-    tier_level INTEGER DEFAULT 1,
-    created_at TIMESTAMP WITH TIME ZONE
-);
-```
-
-**`tier_level` Explanation**:
-- `1`: Direct subcontractor to prime
-- `2`: Sub-subcontractor (tier 2)
-- `3+`: Deeper supply chain tiers
-
----
-
-### Entity Resolution Tracking
-
-#### `entity_resolution_log`
-Tracks every LLM decision for entity matching.
-
-```sql
-CREATE TABLE entity_resolution_log (
-    id UUID PRIMARY KEY,
-    source_vendor_name VARCHAR(500) NOT NULL,
-    resolved_vendor_id UUID REFERENCES vendors(id),
-    
-    llm_model VARCHAR(100),
-    llm_prompt_tokens INTEGER,
-    llm_completion_tokens INTEGER,
-    confidence_score DECIMAL(3,2),
-    
-    reasoning TEXT,
-    alternative_matches JSONB,
-    
-    manually_verified BOOLEAN DEFAULT FALSE,
-    verified_by VARCHAR(255),
-    verified_at TIMESTAMP WITH TIME ZONE,
-    
-    created_at TIMESTAMP WITH TIME ZONE
-);
-```
-
-**Purpose**: 
-- Track LLM costs (token usage)
-- Audit resolution decisions
-- Enable manual verification workflow
-- Improve prompts based on reasoning
-
----
-
-### Neo4j Sync Management
-
-#### `neo4j_sync_status`
-Tracks what's been synced to the knowledge graph.
-
-```sql
-CREATE TABLE neo4j_sync_status (
-    id UUID PRIMARY KEY,
-    entity_type VARCHAR(50) NOT NULL,
-    entity_id UUID NOT NULL,
-    synced_at TIMESTAMP WITH TIME ZONE,
-    neo4j_node_id BIGINT,
-    sync_status VARCHAR(20) DEFAULT 'pending',
-    error_message TEXT,
-    UNIQUE(entity_type, entity_id)
-);
-```
-
-**`entity_type` Values**: `'vendor'`, `'contract'`, `'agency'`, `'subcontract'`
-
-**`sync_status` Values**: `'pending'`, `'synced'`, `'failed'`
-
----
-
-### Analytics Tables
-
-#### `vendor_analytics`
-Pre-computed vendor statistics for performance.
-
-```sql
-CREATE TABLE vendor_analytics (
-    vendor_id UUID PRIMARY KEY REFERENCES vendors(id),
-    total_contracts INTEGER DEFAULT 0,
-    total_obligated_amount DECIMAL(15,2) DEFAULT 0,
-    active_contracts INTEGER DEFAULT 0,
-    first_contract_date DATE,
-    last_contract_date DATE,
-    top_agencies UUID[],
-    top_naics_codes VARCHAR(10)[],
-    subcontractor_count INTEGER DEFAULT 0,
-    prime_contractor_count INTEGER DEFAULT 0,
-    calculated_at TIMESTAMP WITH TIME ZONE
-);
-```
-
-**Purpose**: Avoid expensive aggregations in real-time queries.
-
----
-
-### ETL Management
-
-#### `etl_runs`
-Tracks pipeline execution.
-
-```sql
-CREATE TABLE etl_runs (
-    id UUID PRIMARY KEY,
-    run_type VARCHAR(50) NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    records_fetched INTEGER,
-    records_processed INTEGER,
-    records_failed INTEGER,
-    started_at TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    error_message TEXT,
-    metadata JSONB
-);
-```
-
-**`run_type` Values**: `'full'`, `'incremental'`, `'backfill'`
-
----
-
-## Neo4j Graph Schema
-
-### Node Labels
-
-#### `:Vendor`
-Companies that receive contracts or act as subcontractors.
-
-**Properties**:
-```cypher
-{
-  id: "uuid-from-postgres",
-  canonicalName: "Lockheed Martin Corporation",
-  legalName: "Lockheed Martin Corporation",
-  duns: "006928857",
-  uei: "K4LJ9RPBMQ47",
-  state: "MD",
-  city: "Bethesda",
-  vendorType: "Corporation",
-  businessTypes: ["Large Business"],
-  naicsCodes: ["336411", "541330"],
-  resolutionConfidence: 0.98,
-  syncedAt: datetime()
-}
-```
-
-**Constraints**:
-```cypher
-CREATE CONSTRAINT vendor_id FOR (v:Vendor) REQUIRE v.id IS UNIQUE;
-CREATE CONSTRAINT vendor_canonical_name FOR (v:Vendor) REQUIRE v.canonicalName IS NOT NULL;
-```
-
----
-
-#### `:Agency`
-Government entities awarding contracts.
-
-**Properties**:
-```cypher
-{
-  id: "uuid-from-postgres",
-  agencyCode: "9700",
-  agencyName: "Department of Defense",
-  department: "Defense",
-  agencyType: "Federal",
-  syncedAt: datetime()
-}
-```
-
-**Constraints**:
-```cypher
-CREATE CONSTRAINT agency_id FOR (a:Agency) REQUIRE a.id IS UNIQUE;
-CREATE CONSTRAINT agency_code FOR (a:Agency) REQUIRE a.agencyCode IS UNIQUE;
-```
-
----
-
-#### `:Contract`
-Individual contract awards.
-
-**Properties**:
-```cypher
-{
-  id: "uuid-from-postgres",
-  contractId: "W911S0-23-C-0001",
-  description: "Weapons System Support",
-  awardType: "Contract",
-  obligatedAmount: 125000000.00,
-  baseAmount: 100000000.00,
-  totalValue: 150000000.00,
-  signedDate: date("2023-03-15"),
-  startDate: date("2023-04-01"),
-  endDate: date("2028-03-31"),
-  naicsCode: "336411",
-  pscCode: "1520",
-  placeOfPerformanceState: "TX",
-  syncedAt: datetime()
-}
-```
-
-**Constraints**:
-```cypher
-CREATE CONSTRAINT contract_id FOR (c:Contract) REQUIRE c.id IS UNIQUE;
-```
-
----
-
-### Relationship Types
-
-#### `(:Vendor)-[:AWARDED]->(:Contract)`
-A vendor was awarded a specific contract.
-
-**Properties**: None (relationship itself is meaningful)
-
-**Example**:
-```cypher
-MATCH (v:Vendor {canonicalName: "Boeing"})-[:AWARDED]->(c:Contract)
-RETURN v, c
-```
-
----
-
-#### `(:Agency)-[:AWARDED_CONTRACT]->(:Contract)`
-An agency issued a specific contract.
-
-**Properties**: None
-
----
-
-#### `(:Contract)-[:AWARDED_TO]->(:Vendor)`
-A contract was awarded to a vendor (inverse of `AWARDED`).
-
-**Properties**: None
-
-**Note**: Both directions exist for query convenience.
-
----
-
-#### `(:Vendor)-[:SUBCONTRACTED]->(:Vendor)`
-Prime contractor subcontracted work to another vendor.
-
-**Properties**:
-```cypher
-{
-  tierLevel: 1,
-  amount: 25000000.00,
-  contractId: "uuid-of-prime-contract",
-  description: "Engine components"
-}
-```
-
-**Example**:
-```cypher
-MATCH (prime:Vendor)-[r:SUBCONTRACTED]->(sub:Vendor)
-WHERE r.tierLevel = 1
-RETURN prime.canonicalName, sub.canonicalName, r.amount
-```
-
----
-
-#### `(:Contract)-[:MODIFIED_BY]->(:Contract)`
-Contract modification/amendment relationship.
-
-**Properties**:
-```cypher
-{
-  modificationType: "Extension",
-  modifiedAt: date("2024-01-15")
-}
-```
-
----
-
-### Indexes
-
-```cypher
--- Text search
-CREATE TEXT INDEX vendor_name_text FOR (v:Vendor) ON (v.canonicalName);
-
--- Range queries
-CREATE INDEX contract_amount FOR (c:Contract) ON (c.obligatedAmount);
-CREATE INDEX contract_dates FOR (c:Contract) ON (c.signedDate, c.startDate, c.endDate);
-
--- Filtering
-CREATE INDEX vendor_state FOR (v:Vendor) ON (v.state);
-CREATE INDEX vendor_naics FOR (v:Vendor) ON (v.naicsCodes);
-```
-
----
-
-## Common Query Patterns
-
-### PostgreSQL
-
-**Find all contracts for a vendor**:
-```sql
-SELECT c.* 
-FROM contracts c
-JOIN vendors v ON c.vendor_id = v.id
-WHERE v.canonical_name ILIKE '%lockheed martin%';
-```
-
-**Top 10 vendors by spending**:
-```sql
-SELECT v.canonical_name, SUM(c.obligated_amount) as total
-FROM vendors v
-JOIN contracts c ON v.id = c.vendor_id
-GROUP BY v.id, v.canonical_name
-ORDER BY total DESC
-LIMIT 10;
-```
-
-**Find unsynced records**:
-```sql
-SELECT c.* 
-FROM contracts c
-LEFT JOIN neo4j_sync_status s 
-  ON s.entity_type = 'contract' AND s.entity_id = c.id
-WHERE s.id IS NULL OR s.sync_status = 'failed';
-```
-
----
-
-### Neo4j
-
-**Find all vendors connected to an agency within 2 hops**:
-```cypher
-MATCH path = (a:Agency {agencyCode: "9700"})-[*..2]-(v:Vendor)
-RETURN DISTINCT v.canonicalName, v.state
-ORDER BY v.canonicalName;
-```
-
-**Detect circular subcontractor relationships**:
-```cypher
-MATCH (v1:Vendor)-[:SUBCONTRACTED*2..4]->(v1)
-RETURN v1.canonicalName, 
-       [v IN nodes(path) | v.canonicalName] AS circle
-LIMIT 10;
-```
-
-**Find tier-2 subcontractors for a prime vendor**:
-```cypher
-MATCH (prime:Vendor {canonicalName: "Lockheed Martin Corporation"})
-      -[:SUBCONTRACTED]->(tier1)
-      -[:SUBCONTRACTED]->(tier2)
-RETURN tier2.canonicalName, 
-       tier1.canonicalName AS through,
-       COUNT(*) AS relationships
-ORDER BY relationships DESC;
-```
-
-**Vendor concentration risk analysis**:
-```cypher
-MATCH (a:Agency)-[:AWARDED_CONTRACT]->(c:Contract)-[:AWARDED_TO]->(v:Vendor)
-WITH a, v, COUNT(c) AS contractCount, SUM(c.obligatedAmount) AS totalSpend
-WITH a, 
-     COLLECT({vendor: v.canonicalName, spend: totalSpend}) AS vendors,
-     SUM(totalSpend) AS agencyTotal
-WITH a, vendors, agencyTotal,
-     [vendor IN vendors | vendor.spend / agencyTotal] AS concentrations
-WHERE ANY(conc IN concentrations WHERE conc > 0.25)
-RETURN a.agencyName, 
-       [vendor IN vendors WHERE vendor.spend / agencyTotal > 0.25 | 
-        {vendor: vendor.vendor, percentage: vendor.spend / agencyTotal * 100}];
-```
-
-**PageRank centrality (requires GDS)**:
-```cypher
-CALL gds.pageRank.stream('vendor-network')
-YIELD nodeId, score
-WITH gds.util.asNode(nodeId) AS vendor, score
-WHERE vendor:Vendor
-RETURN vendor.canonicalName, score
-ORDER BY score DESC
-LIMIT 20;
-```
-
----
-
-## Data Sync Process
-
-### Sync Order (Important!)
-1. **Agencies** first (no dependencies)
-2. **Vendors** second (no dependencies)
-3. **Contracts** third (requires vendors + agencies)
-4. **Subcontracts** last (requires vendors)
-
-### Sync Pseudocode
-```python
-# 1. Query unsynced records from Postgres
-unsynced = db.query("""
-    SELECT * FROM vendors 
-    WHERE id NOT IN (
-        SELECT entity_id FROM neo4j_sync_status 
-        WHERE entity_type = 'vendor' AND sync_status = 'synced'
-    )
-""")
-
-# 2. Batch sync to Neo4j
-for batch in chunks(unsynced, 1000):
-    neo4j.execute("""
-        UNWIND $vendors AS v
-        MERGE (vendor:Vendor {id: v.id})
-        SET vendor.canonicalName = v.canonical_name,
-            vendor.state = v.state,
-            vendor.naicsCodes = v.naics_codes
-    """, vendors=batch)
-    
-    # 3. Update sync status
-    db.execute("""
-        INSERT INTO neo4j_sync_status (entity_type, entity_id, sync_status)
-        VALUES ('vendor', $vendor_id, 'synced')
-    """)
-```
-
----
-
-## Key Terminology
-
-- **DUNS**: Data Universal Numbering System (legacy vendor identifier)
-- **UEI**: Unique Entity Identifier (newer standard replacing DUNS)
-- **NAICS**: North American Industry Classification System
-- **PSC**: Product Service Code (federal procurement classification)
-- **Obligated Amount**: Money actually committed on a contract
-- **Total Value**: Potential maximum including all options/modifications
-- **Prime Contractor**: Main vendor awarded the contract
-- **Subcontractor**: Vendor hired by prime to perform work
-- **Tier Level**: Depth in subcontractor chain (1 = direct sub, 2 = sub-sub, etc.)
-
----
-
-## Important Notes
-
-1. **UUIDs**: All primary keys use UUID v4 for distributed system compatibility
-2. **Timestamps**: All use `TIMESTAMP WITH TIME ZONE` for consistency
-3. **Arrays**: PostgreSQL arrays (e.g., `TEXT[]`) store multi-valued attributes
-4. **JSONB**: Used for flexible/semi-structured data (raw payloads, metadata)
-5. **Soft Deletes**: Not implemented; use `updated_at` for change tracking
-6. **Sync Idempotency**: Neo4j uses `MERGE` to prevent duplicates on retry
-
----
-
-## Schema Version
-**Version**: 1.0  
-**Last Updated**: 2026-01-26  
-**Compatible With**: PostgreSQL 14+, Neo4j 5.x (AuraDB)
+### Neo4j Schema
+
+**Nodes:**
+* `(:Vendor {id, canonicalName, state, naicsCodes})`
+* `(:Agency {id, agencyCode, agencyName})`
+* `(:Contract {id, contractId, obligatedAmount, signedDate})`
+
+**Relationships:**
+* `(:Vendor)-[:AWARDED]->(:Contract)`
+* `(:Agency)-[:AWARDED_CONTRACT]->(:Contract)`
+* `(:Vendor)-[:SUBCONTRACTED {tierLevel, amount}]->(:Vendor)`
+
+## Cost Breakdown
+
+### Monthly Operating Costs (Estimated)
+
+| Service | Configuration | Year 1 | Year 2+ |
+|---------|---------------|--------|---------|
+| Lambda | 1,500 invocations/month | $0 (free tier) | $0.50 |
+| SQS | 15K messages/month | $0 (free tier) | $0.10 |
+| DynamoDB | On-demand, 100K reads | $0.50 | $0.50 |
+| Bedrock | 750 Claude Haiku calls | $2.25 | $2.25 |
+| RDS | db.t3.micro, 20GB | $0 (free tier) | $16 |
+| VPC Endpoints | Bedrock Interface | $7 | $7 |
+| S3 | 5GB storage, 100K requests | $0.50 | $0.50 |
+| CloudWatch | Logs, alarms | $2 | $2 |
+| Secrets Manager | 1 secret | $0.40 | $0.40 |
+| **Total** | | **~$13** | **~$29** |
+
+### Cost Optimization Strategies
+* **4-Tier Resolution:** Reduces Bedrock costs from $45/month to $2.25/month (95% reduction)
+* **VPC Endpoints:** Eliminates NAT Gateway ($33/month → $7/month)
+* **Serverless:** No fixed compute costs, pay-per-use only
+* **Free Tier Maximization:** Lambda, SQS, RDS (year 1)
+* **Selective Neo4j Sync:** Stays within free tier limits
+
+## Key Metrics & Success Criteria
+
+### Performance
+* Daily pipeline completes in <1 hour
+* Entity resolution accuracy >95%
+* API response time <200ms (p95)
+* Graph query latency <1 second
+* Frontend graph render time <2 seconds for 1000 nodes
+* Smooth 60fps animations on graph interactions
+
+### User Experience
+* Graph canvas loads in <2 seconds
+* Node selection reveals details in <100ms
+* Filters update graph in <500ms
+* Dark mode with glassmorphic UI elements
+* Mobile-responsive design (collapsible sidebar)
+
+### Cost
+* Monthly AWS bill <$15 (year 1), <$30 (year 2+)
+* Bedrock costs <$3/month
+* Zero NAT Gateway charges
+
+### Reliability
+* Pipeline success rate >99%
+* Zero data loss (DLQ captures all failures)
+* Automated backups (7-day retention)
+
+### Code Quality
+* Test coverage >80%
+* Zero critical security vulnerabilities (Checkov scans)
+* All infrastructure in version control
+
+## Resume Talking Points
+
+**For Interviews:**
+
+**Backend & Architecture:**
+* "Designed serverless event-driven ETL pipeline processing 10K+ federal contracts daily at <$15/month operational cost"
+* "Optimized LLM usage 95% through 4-tier entity resolution strategy: DUNS/UEI matching → fuzzy search → DynamoDB cache → Bedrock"
+* "Implemented polyglot persistence architecture combining PostgreSQL (ACID compliance), DynamoDB (caching), and Neo4j (graph analytics)"
+* "Built resilient data pipeline with SQS message queuing, dead-letter queues, automatic retries, and idempotent processing"
+* "Provisioned entire AWS infrastructure as code using Terraform with automated cost control testing"
+
+**Frontend & Visualization:**
+* "Built interactive network graph visualization using Cytoscape.js to explore supply chain relationships across 1000+ vendors and 10K+ contracts"
+* "Designed modern glassmorphic UI with dark mode, smooth animations (Framer Motion), and progressive disclosure patterns"
+* "Implemented data-driven graph styling where node sizes and edge widths map to contract values and relationship strength"
+* "Created responsive dashboard with real-time filtering, search, and vendor detail exploration"
+
+## Notes
+* This is a portfolio/resume project demonstrating cloud architecture, data engineering, AI integration, and modern UI/UX design skills
+* Primary goals are technical depth, cost efficiency, and visual polish — not production scale
+* Code quality, testing, documentation, and user experience are prioritized over feature velocity
+* Frontend should look like a modern SaaS product (think Vercel, Linear, Notion aesthetics) to differentiate from typical data engineering portfolios
