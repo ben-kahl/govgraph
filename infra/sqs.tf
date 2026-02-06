@@ -7,7 +7,8 @@ module "sqs" {
 
   name = "gov-graph-contract-queue"
 
-  delay_seconds             = 0
+  visibility_timeout_seconds = 330
+  delay_seconds              = 0
   max_message_size          = 262144
   message_retention_seconds = 86400
   receive_wait_time_seconds = 10

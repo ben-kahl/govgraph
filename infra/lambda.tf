@@ -35,9 +35,8 @@ module "ingestion_lambda" {
 
   source_path = "${path.module}/../src/ingestion"
 
-  vpc_subnet_ids         = module.vpc.private_subnets
-  vpc_security_group_ids = [module.security_group.security_group_id]
-  attach_network_policy  = true
+  # Removed VPC config to allow public internet access for USAspending API
+  # S3 and SQS are reached via public AWS endpoints
 
   environment_variables = {
     DB_HOST        = module.db.db_instance_address
@@ -101,12 +100,13 @@ module "processing_lambda" {
   attach_network_policy  = true
 
   environment_variables = {
-    DB_HOST          = module.db.db_instance_address
-    DB_NAME          = var.db_name
-    DB_USER          = var.db_username
-    DB_SECRET_ARN    = module.db.db_instance_master_user_secret_arn
-    BEDROCK_MODEL_ID = "anthropic.claude-haiku-4-5-20251001-v1:0"
-    REGION_NAME      = "us-east-1"
+    DB_HOST              = module.db.db_instance_address
+    DB_NAME              = var.db_name
+    DB_USER              = var.db_username
+    DB_SECRET_ARN        = module.db.db_instance_master_user_secret_arn
+    DYNAMODB_CACHE_TABLE = aws_dynamodb_table.entity_cache.name
+    BEDROCK_MODEL_ID     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    REGION_NAME          = "us-east-1"
   }
 
   attach_policy_json = true
@@ -120,11 +120,15 @@ module "processing_lambda" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes",
           "secretsmanager:GetSecretValue",
-          "bedrock:InvokeModel"
+          "bedrock:InvokeModel",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem"
         ]
         Resource = [
           module.sqs.queue_arn,
           module.db.db_instance_master_user_secret_arn,
+          aws_dynamodb_table.entity_cache.arn,
           "*"
         ]
       }
