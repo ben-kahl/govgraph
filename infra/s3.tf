@@ -11,15 +11,30 @@ resource "aws_s3_bucket" "lambda_builds" {
   }
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "lambda_builds" {
-  bucket = aws_s3_bucket.lambda_builds.id
+resource "aws_s3_bucket" "raw_data" {
+  bucket = "govgraph-raw-data-${random_id.bucket_suffix.hex}"
+
+  tags = {
+    Name        = "Raw Contract Data Archive"
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "raw_data" {
+  bucket = aws_s3_bucket.raw_data.id
 
   rule {
-    id     = "cleanup_old_builds"
+    id     = "archive_old_data"
     status = "Enabled"
 
-    expiration {
-      days = 1
+    transition {
+      days          = 30
+      storage_class = "GLACIER"
     }
   }
+}
+
+output "raw_data_bucket_name" {
+  value = aws_s3_bucket.raw_data.id
 }

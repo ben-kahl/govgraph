@@ -1,31 +1,15 @@
 # -----------------------------------------------------------------------------
-# Lambda Layer (Manual Build)
+# Lambda Layer (Automatic Build during Plan)
 # -----------------------------------------------------------------------------
 
-resource "null_resource" "build_layer" {
-  triggers = {
-    requirements_hash = filemd5("${path.module}/../src/requirements.txt")
-  }
-
-  provisioner "local-exec" {
-    command = <<EOT
-      mkdir -p ${path.module}/builds/layer_stage/python/lib/python3.12/site-packages
-      pip install -r ${path.module}/../src/requirements.txt -t ${path.module}/builds/layer_stage/python/lib/python3.12/site-packages --platform manylinux2014_x86_64 --implementation cp --python-version 3.12 --only-binary=:all: --upgrade
-      find ${path.module}/builds/layer_stage -type d -exec chmod 755 {} +
-      find ${path.module}/builds/layer_stage -type f -exec chmod 644 {} +
-      python3 -c "import shutil; shutil.make_archive('${path.module}/builds/layer', 'zip', '${path.module}/builds/layer_stage')"
-      rm -rf ${path.module}/builds/layer_stage
-    EOT
-  }
+data "external" "build_layer" {
+  program = ["python3", "${path.module}/scripts/build_layer.py"]
 }
 
 resource "aws_s3_object" "layer_zip" {
-  bucket     = aws_s3_bucket.lambda_builds.id
-  key        = "layer-${filemd5("${path.module}/../src/requirements.txt")}.zip"
-  source     = "${path.module}/builds/layer.zip"
-  depends_on = [null_resource.build_layer]
-
-  # Ensure update when zip changes
+  bucket      = aws_s3_bucket.lambda_builds.id
+  key         = "layer-${filemd5("${path.module}/../src/requirements.txt")}.zip"
+  source      = data.external.build_layer.result.path
   source_hash = filemd5("${path.module}/../src/requirements.txt")
 }
 
@@ -56,10 +40,12 @@ module "ingestion_lambda" {
   attach_network_policy  = true
 
   environment_variables = {
-    DB_HOST       = module.db.db_instance_address
-    DB_NAME       = var.db_name
-    DB_USER       = var.db_username
-    DB_SECRET_ARN = module.db.db_instance_master_user_secret_arn
+    DB_HOST        = module.db.db_instance_address
+    DB_NAME        = var.db_name
+    DB_USER        = var.db_username
+    DB_SECRET_ARN  = module.db.db_instance_master_user_secret_arn
+    SQS_QUEUE_URL  = module.sqs.queue_url
+    S3_BUCKET_NAME = aws_s3_bucket.raw_data.id
   }
 
   attach_policy_json = true
@@ -73,11 +59,13 @@ module "ingestion_lambda" {
           "sqs:ReceiveMessage",
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes",
-          "secretsmanager:GetSecretValue"
+          "secretsmanager:GetSecretValue",
+          "s3:PutObject"
         ]
         Resource = [
           module.sqs.queue_arn,
-          module.db.db_instance_master_user_secret_arn
+          module.db.db_instance_master_user_secret_arn,
+          "${aws_s3_bucket.raw_data.arn}/*"
         ]
       },
       {
@@ -146,6 +134,13 @@ module "processing_lambda" {
   tags = {
     Terraform   = "true"
     Environment = "dev"
+  }
+
+  event_source_mapping = {
+    sqs = {
+      event_source_arn = module.sqs.queue_arn
+      batch_size       = 10
+    }
   }
 }
 
