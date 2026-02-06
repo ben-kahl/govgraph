@@ -166,8 +166,18 @@ def main():
     contracts = fetch_contracts(date_str, date_str)
     print(f"Fetched {len(contracts)} contracts.")
     if contracts:
-        print(contracts)
+        # print(contracts) # Commented out to reduce logs
         store_raw_contracts(contracts)
+
+
+def lambda_handler(event, context):
+    """AWS Lambda entry point."""
+    print(f"Received event: {json.dumps(event)}")
+    main()
+    return {
+        "statusCode": 200,
+        "body": json.dumps("Ingestion completed successfully")
+    }
 
 
 if __name__ == "__main__":
