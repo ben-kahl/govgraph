@@ -1,9 +1,7 @@
 # dev.tfvars
-vpc_name                  = "gov-graph-vpc-dev"
-vpc_cidr                  = "10.0.0.0/16"
-enable_single_nat_gateway = true
-node_instance_type        = ["t3.medium"]
-node_capacity_type        = "SPOT"
-db_name                   = "gov-graph-db"
-db_username               = "govgraph"
-
+vpc_name    = "gov-graph-vpc-dev"
+vpc_cidr    = "10.0.0.0/16"
+db_name     = "govgraph"
+db_username = "govgraph_admin"
+aws_region  = "us-east-1"
+admin_email = "admin@example.com"

@@ -38,30 +38,16 @@ variable "vpc_database_subnets" {
   default     = ["10.0.21.0/24", "10.0.22.0/24"]
 }
 
-variable "enable_single_nat_gateway" {
-  description = "Enable Single NAT Gateway to save costs (True = Cheap, False = High Availability)"
-  type        = bool
-  default     = true
-}
-
-# EKS Variables
-
-variable "cluster_name" {
-  description = "Name of the EKS cluster"
+variable "aws_region" {
+  description = "AWS region"
   type        = string
-  default     = "gov-graph-cluster"
+  default     = "us-east-1"
 }
 
-variable "node_instance_type" {
-  description = "EC2 instance type for worker nodes"
-  type        = list(string)
-  default     = ["t3.medium"] # The smallest viable k8s node
-}
-
-variable "node_capacity_type" {
-  description = "SPOT or ON_DEMAND"
+variable "admin_email" {
+  description = "Email for budget alerts"
   type        = string
-  default     = "SPOT" # <--- The budget saver
+  default     = "admin@example.com"
 }
 
 # Database Variables

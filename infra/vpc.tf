@@ -14,23 +14,53 @@ module "vpc" {
   database_subnets             = var.vpc_database_subnets
   create_database_subnet_group = true
 
-  enable_nat_gateway = true
-  single_nat_gateway = var.enable_single_nat_gateway
+  # Cost Optimization: No NAT Gateway
+  enable_nat_gateway = false
+  single_nat_gateway = false
 
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  public_subnet_tags = {
-    "kubernetes.io/role/elb" = "1"
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
   }
+}
 
-  private_subnet_tags = {
-    "kubernetes.io/role/internal-elb" = "1"
-  }
+# -----------------------------------------------------------------------------
+# VPC Endpoints (Cost Optimization: Bypass NAT Gateway)
+# -----------------------------------------------------------------------------
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
 
   tags = {
-    Terraform                                 = "true"
-    Environment                               = "dev"
-    "kubernetes.io/cluster/gov-graph-cluster" = "shared"
+    Name = "s3-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
+
+  tags = {
+    Name = "dynamodb-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "bedrock" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.bedrock-runtime"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [module.security_group.security_group_id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "bedrock-endpoint"
   }
 }
