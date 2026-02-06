@@ -17,9 +17,9 @@ CREATE INDEX IF NOT EXISTS idx_raw_contracts_processed ON raw_contracts(processe
 -- 2. Vendors (Canonical Records)
 CREATE TABLE IF NOT EXISTS vendors (
     id UUID PRIMARY KEY,
-    duns VARCHAR(20),
-    uei VARCHAR(20),
-    canonical_name VARCHAR(500) NOT NULL,
+    duns VARCHAR(20) UNIQUE,
+    uei VARCHAR(20) UNIQUE,
+    canonical_name VARCHAR(500) UNIQUE NOT NULL,
     legal_name VARCHAR(500),
     doing_business_as TEXT[],
     vendor_type VARCHAR(50),
@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS contracts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    PRIMARY KEY (id, signed_date)
+    PRIMARY KEY (id, signed_date),
+    UNIQUE (contract_id, signed_date)
 ) PARTITION BY RANGE (signed_date);
 
 -- Create Default Partition to catch any dates not explicitly defined

@@ -24,17 +24,17 @@ sqs_client = boto3.client('sqs')
 def fetch_contracts(start_date, end_date):
     """
     Fetches contracts from USAspending API for a given date range.
-    
+
     Args:
         start_date (str): YYYY-MM-DD
         end_date (str): YYYY-MM-DD
-        
+
     Returns:
         list: List of contract dictionaries
     """
     url = f"{API_BASE_URL}{SEARCH_ENDPOINT}"
     headers = {"Content-Type": "application/json"}
-    
+
     payload = {
         "filters": {
             "time_period": [{"start_date": start_date, "end_date": end_date}],
@@ -57,7 +57,8 @@ def fetch_contracts(start_date, end_date):
         response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code != 200:
-            logger.error(f"Error fetching data: {response.status_code} - {response.text}")
+            logger.error(f"Error fetching data: {
+                         response.status_code} - {response.text}")
             break
 
         data = response.json()
@@ -66,7 +67,8 @@ def fetch_contracts(start_date, end_date):
             break
 
         all_results.extend(results)
-        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 5: # Limit to 5 pages for testing
+        # Limit to 10 pages (1000 records) for testing/prototype
+        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 10:
             break
         page += 1
 
@@ -76,8 +78,9 @@ def fetch_contracts(start_date, end_date):
 def archive_to_s3(contracts, date_str):
     """Archives raw contract data to S3."""
     file_key = f"{date_str}/contracts.json"
-    logger.info(f"Archiving {len(contracts)} contracts to s3://{S3_BUCKET}/{file_key}")
-    
+    logger.info(f"Archiving {len(contracts)
+                             } contracts to s3://{S3_BUCKET}/{file_key}")
+
     s3_client.put_object(
         Bucket=S3_BUCKET,
         Key=file_key,
@@ -90,7 +93,7 @@ def archive_to_s3(contracts, date_str):
 def send_to_queue(contracts):
     """Sends individual contracts to SQS in batches."""
     logger.info(f"Sending {len(contracts)} contracts to SQS queue...")
-    
+
     # SQS SendMessageBatch supports up to 10 messages
     for i in range(0, len(contracts), 10):
         batch = contracts[i:i+10]
@@ -100,7 +103,7 @@ def send_to_queue(contracts):
                 'Id': str(j),
                 'MessageBody': json.dumps(contract)
             })
-        
+
         sqs_client.send_message_batch(
             QueueUrl=SQS_QUEUE_URL,
             Entries=entries
@@ -109,24 +112,32 @@ def send_to_queue(contracts):
 
 def lambda_handler(event, context):
     """Main Lambda Entry Point."""
-    # Get date from event or default to yesterday
-    date_str = event.get('date')
-    if not date_str:
-        today = datetime.date.today()
-        yesterday = today - datetime.timedelta(days=1)
-        date_str = yesterday.strftime("%Y-%m-%d")
-
-    logger.info(f"Starting ingestion for date: {date_str}")
-
-    contracts = fetch_contracts(date_str, date_str)
+    # Get configuration from event
+    days_back = event.get('days', 3)  # Default to 3 days to handle lag
+    target_date = event.get('date')
     
+    today = datetime.date.today()
+    
+    if target_date:
+        start_date = target_date
+        end_date = target_date
+    else:
+        # Fetch a range to ensure we capture late-reported data
+        # Federal data has a 24-72h reporting lag
+        start_date = (today - datetime.timedelta(days=days_back)).strftime("%Y-%m-%d")
+        end_date = today.strftime("%Y-%m-%d")
+
+    logger.info(f"Starting ingestion: {start_date} to {end_date}")
+
+    contracts = fetch_contracts(start_date, end_date)
+
     if not contracts:
         logger.info("No contracts found for this period.")
         return {"statusCode": 200, "body": "No data found"}
 
     # 1. Archive to S3
-    archive_to_s3(contracts, date_str)
-    
+    archive_to_s3(contracts, f"{start_date}_to_{end_date}")
+
     # 2. Push to SQS for downstream processing
     send_to_queue(contracts)
 
@@ -134,3 +145,25 @@ def lambda_handler(event, context):
         "statusCode": 200,
         "body": f"Ingested {len(contracts)} contracts. Data archived to S3 and queued in SQS."
     }
+
+
+def test_handler():
+    """Local test run handler"""
+    today = datetime.date.today()
+    start_date = (today - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
+
+    contracts = fetch_contracts(start_date, end_date)
+
+    if not contracts:
+        return {"statusCode": 200, "body": "No data found"}
+
+    print(len(contracts))
+    return {
+        "statusCode": 200,
+        "body": f"Ingested {len(contracts)} contracts. Data archived to S3 and queued in SQS."
+    }
+
+
+if __name__ == "__main__":
+    test_handler()
