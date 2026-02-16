@@ -21,7 +21,7 @@ DB_USER = os.environ.get("DB_USER")
 DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN")
 DYNAMODB_CACHE_TABLE = os.environ.get("DYNAMODB_CACHE_TABLE")
 BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
+    "BEDROCK_MODEL_ID", "us.anthropic.claude-3-haiku-20240307-v1:0")
 
 # Clients
 bedrock = boto3.client(service_name="bedrock-runtime")
@@ -57,7 +57,7 @@ def get_db_connection():
 def refresh_canonical_names_cache(conn):
     """Fetches all canonical names from the database for fuzzy matching."""
     global CANONICAL_NAMES_CACHE, CACHE_EXPIRY
-    
+
     # Refresh cache every 15 minutes
     if CANONICAL_NAMES_CACHE is not None and CACHE_EXPIRY > datetime.now():
         return CANONICAL_NAMES_CACHE
@@ -67,7 +67,7 @@ def refresh_canonical_names_cache(conn):
         cur.execute("SELECT canonical_name FROM vendors")
         CANONICAL_NAMES_CACHE = [row[0] for row in cur.fetchall()]
         CACHE_EXPIRY = datetime.now() + timedelta(minutes=15)
-    
+
     return CANONICAL_NAMES_CACHE
 
 # -----------------------------------------------------------------------------
@@ -118,8 +118,9 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     # Tier 4: Fuzzy Matching
     canonical_names = refresh_canonical_names_cache(conn)
     if canonical_names:
-        match = process.extractOne(vendor_name, canonical_names, scorer=fuzz.WRatio)
-        if match and match[1] >= 90: # High threshold for automatic fuzzy matching
+        match = process.extractOne(
+            vendor_name, canonical_names, scorer=fuzz.WRatio)
+        if match and match[1] >= 90:  # High threshold for automatic fuzzy matching
             matched_name = match[0]
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
@@ -130,7 +131,8 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                 if res:
                     vendor_id = res['id']
                     # Store in cache for next time
-                    update_cache(vendor_name, matched_name, vendor_id, float(match[1])/100.0)
+                    update_cache(vendor_name, matched_name,
+                                 vendor_id, float(match[1])/100.0)
                     return vendor_id, matched_name, "FUZZY_MATCH", float(match[1])/100.0
 
     # Tier 5: Bedrock LLM Fallback
