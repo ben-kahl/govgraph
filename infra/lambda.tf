@@ -35,6 +35,8 @@ module "ingestion_lambda" {
 
   source_path = "${path.module}/../src/ingestion"
 
+  ignore_source_code_hash = true
+
   # Removed VPC config to allow public internet access for USAspending API
   # S3 and SQS are reached via public AWS endpoints
 
@@ -92,6 +94,8 @@ module "processing_lambda" {
   timeout       = 300
 
   layers = [aws_lambda_layer_version.dependencies.arn]
+
+  ignore_source_code_hash = true
 
   source_path = "${path.module}/../src/processing"
 
@@ -167,6 +171,8 @@ module "sam_proxy_lambda" {
 
   layers = [aws_lambda_layer_version.dependencies.arn]
 
+  ignore_source_code_hash = true
+
   source_path = "${path.module}/../src/processing/sam_proxy.py"
 
   # No VPC config to allow public internet access
@@ -208,6 +214,8 @@ module "sync_lambda" {
   timeout       = 900
 
   layers = [aws_lambda_layer_version.dependencies.arn]
+
+  ignore_source_code_hash = true
 
   source_path = "${path.module}/../src/sync"
 
