@@ -8,13 +8,13 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 * Polyglot Persistence: Combines PostgreSQL for relational data integrity (raw and cleaned contracts) with Neo4j for high-performance graph traversal and relationship discovery
 
-* Infrastructure as Code: The entire environment is fully provisioned via Terraform, featuring strict cost-control policies (Spot Instances, Single NAT Gateway) optimized for lean deployments
+* Infrastructure as Code: The entire environment is fully provisioned via Terraform
 
-* Kubernetes Native: Built on a microservices architecture deployed to Amazon EKS
+* Serviceless Architecture: Using Lambda with scheduled jobs and to host the FastAPI backend. 
 
 ## Tech Stack
 
-* Infrastructure: AWS (EKS, RDS, SQS, Bedrock), Terraform, Docker, Helm
+* Infrastructure: AWS (RDS, SQS, Bedrock, Lambda), Terraform, Docker
 
 * Backend: Python (FastAPI).
 
@@ -37,7 +37,7 @@ GovGraph follows a structured pipeline to transform messy public data into actio
 
 **Database Schema**
 
-The platform manages complex relationships including:
+The platform manages complex relationships with plans to include:
 
 * Prime-to-Subcontractor links (including Tier 2+ depth)
 
@@ -52,9 +52,7 @@ The platform manages complex relationships including:
 
 * Terraform v1.6+
 
-* Kubectl
-
-* Python v3.9+
+* Python v3.11+
 
 **Local Development**
 
@@ -71,14 +69,9 @@ The platform manages complex relationships including:
     terraform apply -var-file="dev.tfvars"
     ```
 
-* Connect to the Cluster:
-    ```Bash
-    aws eks update-kubeconfig --region us-east-1 --name gov-graph-cluster
-    ```
-
 ### Roadmap
 
-    [x] Core EKS Infrastructure
+    [x] Core Backend Infrastructure
 
     [Testing] Phase 1: ETL Backend Pipeline (Scraper, Bedrock Cleaner, SQS integration)
 

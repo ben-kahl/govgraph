@@ -9,3 +9,4 @@ usaspending_api_guide.md
 __pycache__/
 venv/
 *.zip
+*.txt
