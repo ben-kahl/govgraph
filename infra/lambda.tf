@@ -109,7 +109,7 @@ module "processing_lambda" {
     DB_USER                = var.db_username
     DB_SECRET_ARN          = module.db.db_instance_master_user_secret_arn
     DYNAMODB_CACHE_TABLE   = aws_dynamodb_table.entity_cache.name
-    BEDROCK_MODEL_ID       = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    BEDROCK_MODEL_ID       = "us.anthropic.claude-3-haiku-20240307-v1:0"
     REGION_NAME            = "us-east-1"
     SAM_API_KEY_SECRET_ARN = aws_secretsmanager_secret.sam_api_key.arn
     SAM_PROXY_LAMBDA_NAME  = module.sam_proxy_lambda.lambda_function_name
