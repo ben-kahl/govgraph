@@ -42,7 +42,8 @@ def fetch_contracts(start_date, end_date):
         },
         "fields": [
             "Award ID", "Recipient Name", "Award Amount", "Awarding Agency",
-            "Start Date", "End Date", "Award Type", "Recipient UEI", "Recipient DUNS"
+            "Awarding Agency Code", "Start Date", "End Date", "Award Type", 
+            "Recipient UEI", "Recipient DUNS"
         ],
         "limit": 100,
         "page": 1

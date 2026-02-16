@@ -343,6 +343,37 @@ def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
 # -----------------------------------------------------------------------------
 
 
+def resolve_agency(agency_name, agency_code, conn):
+    """Resolves an agency by code, creating it if it doesn't exist."""
+    if not agency_code:
+        return None
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            "SELECT id FROM agencies WHERE agency_code = %s LIMIT 1",
+            (agency_code,)
+        )
+        result = cur.fetchone()
+        if result:
+            return result['id']
+
+        # Create new agency
+        agency_id = str(uuid.uuid4())
+        cur.execute(
+            """
+            INSERT INTO agencies (id, agency_code, agency_name, updated_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (agency_code) DO UPDATE SET 
+                agency_name = EXCLUDED.agency_name,
+                updated_at = NOW()
+            RETURNING id
+            """,
+            (agency_id, agency_code, agency_name)
+        )
+        res = cur.fetchone()
+        return res['id'] if res else agency_id
+
+
 def lambda_handler(event, context):
     logger.info(f"Processing batch of {len(event['Records'])} messages")
 
@@ -353,20 +384,45 @@ def lambda_handler(event, context):
 
     try:
         for record in event['Records']:
-            contract_data = json.loads(record['body'])
+            raw_payload = json.loads(record['body'])
+            contract_data = raw_payload
 
+            usaspending_id = contract_data.get('Award ID')
             vendor_name = contract_data.get('Recipient Name')
             duns = contract_data.get('Recipient DUNS')
             uei = contract_data.get('Recipient UEI')
+            agency_name = contract_data.get('Awarding Agency')
+            agency_code = contract_data.get('Awarding Agency Code')
 
-            if not vendor_name:
+            if not usaspending_id:
                 continue
 
-            # 1. Resolve Vendor
+            # 1. Insert into Raw Contracts (Landing Zone)
+            raw_contract_id = str(uuid.uuid4())
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO raw_contracts (id, usaspending_id, raw_payload, ingested_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (usaspending_id) DO UPDATE SET 
+                        raw_payload = EXCLUDED.raw_payload,
+                        ingested_at = NOW()
+                    RETURNING id
+                    """,
+                    (raw_contract_id, usaspending_id, json.dumps(raw_payload))
+                )
+                res = cur.fetchone()
+                if res:
+                    raw_contract_id = res[0]
+
+            # 2. Resolve Agency
+            agency_id = resolve_agency(agency_name, agency_code, conn)
+
+            # 3. Resolve Vendor
             vendor_id, canonical_name, method, confidence = resolve_vendor(
                 vendor_name, duns, uei, conn)
 
-            # 2. Store Contract
+            # 4. Store Contract
             with conn.cursor() as cur:
                 contract_uuid = str(uuid.uuid4())
                 signed_date = contract_data.get('Start Date')
@@ -374,31 +430,47 @@ def lambda_handler(event, context):
                     signed_date = date.today().strftime("%Y-%m-%d")
 
                 try:
-                    # Added signed_date to ON CONFLICT to match partitioned index
                     cur.execute(
                         """
                         INSERT INTO contracts (
-                            id, contract_id, vendor_id, description, 
-                            obligated_amount, signed_date, award_type, 
+                            id, contract_id, vendor_id, agency_id, raw_contract_id,
+                            description, obligated_amount, signed_date, award_type, 
                             created_at, updated_at
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                        ON CONFLICT (contract_id, signed_date) DO UPDATE SET updated_at = NOW()
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                        ON CONFLICT (contract_id, signed_date) DO UPDATE SET 
+                            vendor_id = EXCLUDED.vendor_id,
+                            agency_id = EXCLUDED.agency_id,
+                            obligated_amount = EXCLUDED.obligated_amount,
+                            updated_at = NOW()
                         """,
                         (
                             contract_uuid,
-                            contract_data.get('Award ID'),
+                            usaspending_id,
                             vendor_id,
+                            agency_id,
+                            raw_contract_id,
                             f"Contract for {canonical_name}",
                             contract_data.get('Award Amount', 0),
                             signed_date,
                             contract_data.get('Award Type')
                         )
                     )
+                    
+                    # Mark raw contract as processed
+                    cur.execute(
+                        "UPDATE raw_contracts SET processed = TRUE WHERE id = %s",
+                        (raw_contract_id,)
+                    )
+                    
                     processed_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to insert contract {
-                                 contract_data.get('Award ID')}: {e}")
+                    logger.error(f"Failed to insert contract {usaspending_id}: {e}")
+                    with conn.cursor() as err_cur:
+                        err_cur.execute(
+                            "UPDATE raw_contracts SET processing_errors = %s WHERE id = %s",
+                            (str(e), raw_contract_id)
+                        )
 
         return {
             "statusCode": 200,
