@@ -52,7 +52,7 @@ The platform manages complex relationships with plans to include:
 
 * Terraform v1.6+
 
-* Python v3.11+
+* Python v3.12+
 
 **Local Development**
 
