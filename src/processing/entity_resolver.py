@@ -180,10 +180,17 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                     """
                     INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
                     VALUES (%s, %s, %s, %s, FALSE, 1.0)
+                    ON CONFLICT (canonical_name) DO UPDATE SET 
+                        uei = EXCLUDED.uei,
+                        duns = EXCLUDED.duns,
+                        updated_at = NOW()
                     RETURNING id
                     """,
                     (vendor_id, canonical_name, sam_duns, sam_uei)
                 )
+                res = cur.fetchone()
+                if res:
+                    vendor_id = res['id']
                 return vendor_id, canonical_name, "SAM_API_MATCH", 1.0
 
     # Tier 2: DUNS/UEI exact match
@@ -258,22 +265,25 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                     """
                     INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
                     VALUES (%s, %s, %s, %s, TRUE, 0.95)
-                    ON CONFLICT (canonical_name) DO UPDATE SET updated_at = NOW()
+                    ON CONFLICT (canonical_name) DO UPDATE SET 
+                        updated_at = NOW()
                     RETURNING id
                     """,
                     (vendor_id, canonical_name, duns, uei)
                 )
                 res = cur.fetchone()
                 if res:
-                    vendor_id = res[0]
+                    vendor_id = res['id']
             except Exception as e:
                 logger.error(f"Failed to create vendor {canonical_name}: {e}")
-                # Fallback to lookup one more time in case of race condition
+                # Fallback to lookup one more time in case of race condition or other constraint failure
                 cur.execute(
-                    "SELECT id FROM vendors WHERE canonical_name = %s", (canonical_name,))
+                    "SELECT id FROM vendors WHERE canonical_name = %s OR (uei = %s AND uei IS NOT NULL) OR (duns = %s AND duns IS NOT NULL) LIMIT 1",
+                    (canonical_name, uei, duns)
+                )
                 result = cur.fetchone()
                 if result:
-                    vendor_id = result[0]
+                    vendor_id = result['id']
 
     # Update DynamoDB Cache
     update_cache(vendor_name, canonical_name, vendor_id, 0.95)

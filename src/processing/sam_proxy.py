@@ -7,10 +7,12 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def get_secret(secret_arn):
     client = boto3.client('secretsmanager')
     response = client.get_secret_value(SecretId=secret_arn)
     return json.loads(response['SecretString'])
+
 
 def lambda_handler(event, context):
     """
@@ -28,11 +30,11 @@ def lambda_handler(event, context):
 
     uei = event.get('ueiSAM')
     name = event.get('entityName')
-    
+
     params = {
         "api_key": api_key,
     }
-    
+
     if uei:
         params["ueiSAM"] = uei
     elif name:
@@ -41,9 +43,10 @@ def lambda_handler(event, context):
         return {"statusCode": 400, "body": json.dumps({"error": "Missing ueiSAM or entityName"})}
 
     url = "https://api.sam.gov/entity-information/v3/entities"
-    
+
     try:
-        logger.info(f"Calling SAM.gov API for {'UEI: ' + uei if uei else 'Name: ' + name}")
+        logger.info(f"Calling SAM.gov API for {
+                    'UEI: ' + uei if uei else 'Name: ' + name}")
         response = requests.get(url, params=params, timeout=10)
         return {
             "statusCode": response.status_code,

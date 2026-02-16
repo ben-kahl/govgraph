@@ -68,7 +68,7 @@ def fetch_contracts(start_date, end_date):
 
         all_results.extend(results)
         # Limit to 5 pages (500 records) for testing/prototype
-        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 5:
+        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 1:
             break
         page += 1
 
