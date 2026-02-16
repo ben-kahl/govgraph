@@ -1,4 +1,27 @@
 # -----------------------------------------------------------------------------
+# EventBridge Schedule (Daily 6am UTC)
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_event_rule" "daily_ingestion" {
+  name                = "gov-graph-daily-ingestion"
+  description         = "Triggers ingestion Lambda daily at 6am UTC"
+  schedule_expression = "cron(0 6 * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "ingestion_target" {
+  rule      = aws_cloudwatch_event_rule.daily_ingestion.name
+  target_id = "IngestionLambda"
+  arn       = module.ingestion_lambda.lambda_function_arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = module.ingestion_lambda.lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_ingestion.arn
+}
+
+# -----------------------------------------------------------------------------
 # CloudWatch Dashboard
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_dashboard" "main" {
