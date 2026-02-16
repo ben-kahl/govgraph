@@ -8,6 +8,7 @@ import time
 import random
 from datetime import datetime, date, timedelta
 from rapidfuzz import process, fuzz
+import requests
 from psycopg2.extras import RealDictCursor
 
 # Configure logging
@@ -23,10 +24,38 @@ DYNAMODB_CACHE_TABLE = os.environ.get("DYNAMODB_CACHE_TABLE")
 BEDROCK_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID", "us.anthropic.claude-3-haiku-20240307-v1:0")
 
-# Clients
-bedrock = boto3.client(service_name="bedrock-runtime")
-dynamodb = boto3.resource("dynamodb")
-cache_table = dynamodb.Table(DYNAMODB_CACHE_TABLE)
+SAM_API_BASE_URL = "https://api.sam.gov/entity-information/v3/entities"
+SAM_API_KEY_SECRET_ARN = os.environ.get("SAM_API_KEY_SECRET_ARN")
+SAM_PROXY_LAMBDA_NAME = os.environ.get("SAM_PROXY_LAMBDA_NAME")
+
+# Clients (initialized lazily)
+bedrock = None
+lambda_client = None
+dynamodb = None
+cache_table = None
+
+
+def get_bedrock_client():
+    global bedrock
+    if bedrock is None:
+        bedrock = boto3.client(service_name="bedrock-runtime")
+    return bedrock
+
+
+def get_lambda_client():
+    global lambda_client
+    if lambda_client is None:
+        lambda_client = boto3.client(service_name="lambda")
+    return lambda_client
+
+
+def get_cache_table():
+    global dynamodb, cache_table
+    if cache_table is None:
+        dynamodb = boto3.resource("dynamodb")
+        cache_table = dynamodb.Table(DYNAMODB_CACHE_TABLE)
+    return cache_table
+
 
 # In-memory cache for fuzzy matching (persists across warm Lambda invocations)
 CANONICAL_NAMES_CACHE = None
@@ -75,17 +104,89 @@ def refresh_canonical_names_cache(conn):
 # -----------------------------------------------------------------------------
 
 
+def get_sam_entity(uei=None, vendor_name=None):
+    """
+    Fetches entity data from SAM.gov API via a proxy Lambda.
+    This bypasses VPC internet restrictions.
+    """
+    if not SAM_PROXY_LAMBDA_NAME:
+        logger.warning(
+            "SAM_PROXY_LAMBDA_NAME not configured. Skipping SAM Tier.")
+        return None
+
+    payload = {
+        "ueiSAM": uei,
+        "entityName": vendor_name if not uei else None
+    }
+
+    try:
+        response = get_lambda_client().invoke(
+            FunctionName=SAM_PROXY_LAMBDA_NAME,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+
+        result = json.loads(response['Payload'].read())
+
+        if result.get('statusCode') == 200:
+            body = json.loads(result.get('body', '{}'))
+            entity_data = body.get('entityData', [])
+            if entity_data:
+                # Return the first high-confidence match
+                entity = entity_data[0]
+                return {
+                    "canonical_name": entity.get('entityRegistration', {}).get('legalBusinessName'),
+                    "uei": entity.get('entityRegistration', {}).get('ueiSAM'),
+                    "duns": entity.get('entityRegistration', {}).get('duns'),
+                    "confidence": 1.0
+                }
+    except Exception as e:
+        logger.error(f"SAM API Proxy call failed: {e}")
+
+    return None
+
+
 def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     """
-    4-Tier Resolution Strategy:
-    1. DUNS/UEI exact match (RDS)
-    2. Canonical name exact match (RDS)
-    3. DynamoDB cache lookup
-    4. Fuzzy matching (rapidfuzz)
-    5. Bedrock LLM Fallback
+    6-Tier Resolution Strategy:
+    1. Check SAM entity API
+    2. DUNS/UEI exact match (RDS)
+    3. Canonical name exact match (RDS)
+    4. DynamoDB cache lookup
+    5. Fuzzy matching (rapidfuzz)
+    6. Bedrock LLM Fallback
     """
 
-    # Tier 1: DUNS/UEI exact match
+    # Tier 1: SAM entity API match
+    sam_result = get_sam_entity(uei=uei, vendor_name=vendor_name)
+    if sam_result:
+        canonical_name = sam_result['canonical_name']
+        sam_uei = sam_result['uei']
+        sam_duns = sam_result['duns']
+
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id FROM vendors WHERE uei = %s OR canonical_name = %s LIMIT 1",
+                (sam_uei, canonical_name)
+            )
+            result = cur.fetchone()
+
+            if result:
+                return result['id'], canonical_name, "SAM_API_MATCH", 1.0
+            else:
+                # Create new vendor from SAM data
+                vendor_id = str(uuid.uuid4())
+                cur.execute(
+                    """
+                    INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
+                    VALUES (%s, %s, %s, %s, FALSE, 1.0)
+                    RETURNING id
+                    """,
+                    (vendor_id, canonical_name, sam_duns, sam_uei)
+                )
+                return vendor_id, canonical_name, "SAM_API_MATCH", 1.0
+
+    # Tier 2: DUNS/UEI exact match
     if duns or uei:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -96,7 +197,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             if result:
                 return result['id'], result['canonical_name'], "DUNS_UEI_MATCH", 1.0
 
-    # Tier 2: Canonical name exact match
+    # Tier 3: Canonical name exact match
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             "SELECT id, canonical_name FROM vendors WHERE canonical_name = %s LIMIT 1",
@@ -106,16 +207,17 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
         if result:
             return result['id'], result['canonical_name'], "EXACT_NAME_MATCH", 1.0
 
-    # Tier 3: DynamoDB Cache (Previous resolution results for this messy name)
+    # Tier 4: DynamoDB Cache (Previous resolution results for this messy name)
     try:
-        cache_resp = cache_table.get_item(Key={'vendor_name': vendor_name})
+        cache_resp = get_cache_table().get_item(
+            Key={'vendor_name': vendor_name})
         if 'Item' in cache_resp:
             item = cache_resp['Item']
             return item['vendor_id'], item['canonical_name'], "CACHE_MATCH", float(item.get('confidence', 0.9))
     except Exception as e:
         logger.warning(f"DynamoDB cache lookup failed: {e}")
 
-    # Tier 4: Fuzzy Matching
+    # Tier 5: Fuzzy Matching
     canonical_names = refresh_canonical_names_cache(conn)
     if canonical_names:
         match = process.extractOne(
@@ -135,7 +237,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                                  vendor_id, float(match[1])/100.0)
                     return vendor_id, matched_name, "FUZZY_MATCH", float(match[1])/100.0
 
-    # Tier 5: Bedrock LLM Fallback
+    # Tier 6: Bedrock LLM Fallback
     canonical_name = call_bedrock_standardization_with_retry(vendor_name)
 
     # After LLM, check if the NEW canonical name exists in DB
@@ -182,7 +284,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
 def update_cache(vendor_name, canonical_name, vendor_id, confidence):
     """Updates the DynamoDB entity resolution cache."""
     try:
-        cache_table.put_item(Item={
+        get_cache_table().put_item(Item={
             'vendor_name': vendor_name,
             'canonical_name': canonical_name,
             'vendor_id': vendor_id,
@@ -209,7 +311,7 @@ def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
 
     for attempt in range(max_retries):
         try:
-            response = bedrock.invoke_model(
+            response = get_bedrock_client().invoke_model(
                 body=body, modelId=BEDROCK_MODEL_ID)
             response_body = json.loads(response.get("body").read())
             return response_body["content"][0]["text"].strip()
