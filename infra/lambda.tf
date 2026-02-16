@@ -100,13 +100,15 @@ module "processing_lambda" {
   attach_network_policy  = true
 
   environment_variables = {
-    DB_HOST              = module.db.db_instance_address
-    DB_NAME              = var.db_name
-    DB_USER              = var.db_username
-    DB_SECRET_ARN        = module.db.db_instance_master_user_secret_arn
-    DYNAMODB_CACHE_TABLE = aws_dynamodb_table.entity_cache.name
-    BEDROCK_MODEL_ID     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    REGION_NAME          = "us-east-1"
+    DB_HOST                = module.db.db_instance_address
+    DB_NAME                = var.db_name
+    DB_USER                = var.db_username
+    DB_SECRET_ARN          = module.db.db_instance_master_user_secret_arn
+    DYNAMODB_CACHE_TABLE   = aws_dynamodb_table.entity_cache.name
+    BEDROCK_MODEL_ID       = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    REGION_NAME            = "us-east-1"
+    SAM_API_KEY_SECRET_ARN = aws_secretsmanager_secret.sam_api_key.arn
+    SAM_PROXY_LAMBDA_NAME  = module.sam_proxy_lambda.lambda_function_name
   }
 
   attach_policy_json = true
@@ -123,12 +125,14 @@ module "processing_lambda" {
           "bedrock:InvokeModel",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
-          "dynamodb:UpdateItem"
+          "dynamodb:UpdateItem",
+          "lambda:InvokeFunction"
         ]
         Resource = [
           module.sqs.queue_arn,
           module.db.db_instance_master_user_secret_arn,
           aws_dynamodb_table.entity_cache.arn,
+          module.sam_proxy_lambda.lambda_function_arn,
           "*"
         ]
       }
@@ -148,6 +152,48 @@ module "processing_lambda" {
         maximum_concurrency = 2
       }
     }
+  }
+}
+
+module "sam_proxy_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-sam-proxy"
+  description   = "Proxy for SAM.gov API calls (Outside VPC)"
+  handler       = "sam_proxy.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 30
+
+  layers = [aws_lambda_layer_version.dependencies.arn]
+
+  source_path = "${path.module}/../src/processing/sam_proxy.py"
+
+  # No VPC config to allow public internet access
+
+  environment_variables = {
+    SAM_API_KEY_SECRET_ARN = aws_secretsmanager_secret.sam_api_key.arn
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.sam_api_key.arn
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
   }
 }
 
@@ -212,7 +258,7 @@ module "schema_migration_lambda" {
 
   layers = [aws_lambda_layer_version.dependencies.arn]
 
-  source_path   = "${path.module}/../src/db"
+  source_path = "${path.module}/../src/db"
 
   vpc_subnet_ids         = module.vpc.private_subnets
   vpc_security_group_ids = [module.security_group.security_group_id]

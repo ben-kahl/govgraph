@@ -56,7 +56,7 @@ resource "aws_vpc_endpoint" "bedrock" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.bedrock-runtime"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = module.vpc.private_subnets
+  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
   security_group_ids  = [module.security_group.security_group_id]
   private_dns_enabled = true
 
@@ -69,7 +69,7 @@ resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = module.vpc.private_subnets
+  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
   security_group_ids  = [module.security_group.security_group_id]
   private_dns_enabled = true
 
@@ -82,11 +82,24 @@ resource "aws_vpc_endpoint" "logs" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.logs"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = module.vpc.private_subnets
+  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
   security_group_ids  = [module.security_group.security_group_id]
   private_dns_enabled = true
 
   tags = {
     Name = "logs-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "lambda" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.lambda"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
+  security_group_ids  = [module.security_group.security_group_id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "lambda-endpoint"
   }
 }

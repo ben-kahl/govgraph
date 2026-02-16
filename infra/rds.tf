@@ -17,11 +17,15 @@ module "db" {
 
   allocated_storage     = 20
   max_allocated_storage = 100
+  storage_type          = "gp3"
 
   db_name                     = var.db_name
   username                    = var.db_username
   manage_master_user_password = true
   port                        = 5432
+
+  multi_az                    = false
+  performance_insights_enabled = false
 
   db_subnet_group_name   = module.vpc.database_subnet_group_name
   vpc_security_group_ids = [module.security_group.security_group_id]
