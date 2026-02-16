@@ -27,7 +27,8 @@ jobs:
         run: |
           cd src/
           python -m pip install --upgrade pip
-          python install -r requirements.txt
+          python pip install -r requirements.txt
+          python pip install pytest pytest-mock psycopg2
 
       - name: Test with pytest
         id: test
