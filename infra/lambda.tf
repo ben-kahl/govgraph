@@ -144,6 +144,9 @@ module "processing_lambda" {
     sqs = {
       event_source_arn = module.sqs.queue_arn
       batch_size       = 10
+      scaling_config = {
+        maximum_concurrency = 2
+      }
     }
   }
 }
@@ -210,7 +213,6 @@ module "schema_migration_lambda" {
   layers = [aws_lambda_layer_version.dependencies.arn]
 
   source_path   = "${path.module}/../src/db"
-  artifacts_dir = "${path.root}/builds"
 
   vpc_subnet_ids         = module.vpc.private_subnets
   vpc_security_group_ids = [module.security_group.security_group_id]

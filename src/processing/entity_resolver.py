@@ -20,20 +20,28 @@ DB_NAME = os.environ.get("DB_NAME")
 DB_USER = os.environ.get("DB_USER")
 DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN")
 DYNAMODB_CACHE_TABLE = os.environ.get("DYNAMODB_CACHE_TABLE")
-BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
+BEDROCK_MODEL_ID = os.environ.get(
+    "BEDROCK_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
 
 # Clients
 bedrock = boto3.client(service_name="bedrock-runtime")
 dynamodb = boto3.resource("dynamodb")
 cache_table = dynamodb.Table(DYNAMODB_CACHE_TABLE)
 
+# In-memory cache for fuzzy matching (persists across warm Lambda invocations)
+CANONICAL_NAMES_CACHE = None
+CACHE_EXPIRY = None
+
 # -----------------------------------------------------------------------------
 # Database Utilities
 # -----------------------------------------------------------------------------
+
+
 def get_secret(secret_arn):
     client = boto3.client('secretsmanager')
     response = client.get_secret_value(SecretId=secret_arn)
     return json.loads(response['SecretString'])
+
 
 def get_db_connection():
     db_creds = get_secret(DB_SECRET_ARN)
@@ -45,9 +53,27 @@ def get_db_connection():
         connect_timeout=10
     )
 
+
+def refresh_canonical_names_cache(conn):
+    """Fetches all canonical names from the database for fuzzy matching."""
+    global CANONICAL_NAMES_CACHE, CACHE_EXPIRY
+    
+    # Refresh cache every 15 minutes
+    if CANONICAL_NAMES_CACHE is not None and CACHE_EXPIRY > datetime.now():
+        return CANONICAL_NAMES_CACHE
+
+    logger.info("Refreshing canonical names cache...")
+    with conn.cursor() as cur:
+        cur.execute("SELECT canonical_name FROM vendors")
+        CANONICAL_NAMES_CACHE = [row[0] for row in cur.fetchall()]
+        CACHE_EXPIRY = datetime.now() + timedelta(minutes=15)
+    
+    return CANONICAL_NAMES_CACHE
+
 # -----------------------------------------------------------------------------
 # Entity Resolution Logic (4-Tier)
 # -----------------------------------------------------------------------------
+
 
 def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     """
@@ -55,9 +81,10 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     1. DUNS/UEI exact match (RDS)
     2. Canonical name exact match (RDS)
     3. DynamoDB cache lookup
-    4. Fuzzy matching / Bedrock fallback
+    4. Fuzzy matching (rapidfuzz)
+    5. Bedrock LLM Fallback
     """
-    
+
     # Tier 1: DUNS/UEI exact match
     if duns or uei:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -79,7 +106,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
         if result:
             return result['id'], result['canonical_name'], "EXACT_NAME_MATCH", 1.0
 
-    # Tier 3: DynamoDB Cache
+    # Tier 3: DynamoDB Cache (Previous resolution results for this messy name)
     try:
         cache_resp = cache_table.get_item(Key={'vendor_name': vendor_name})
         if 'Item' in cache_resp:
@@ -88,9 +115,27 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     except Exception as e:
         logger.warning(f"DynamoDB cache lookup failed: {e}")
 
-    # Tier 4: Bedrock LLM Fallback
+    # Tier 4: Fuzzy Matching
+    canonical_names = refresh_canonical_names_cache(conn)
+    if canonical_names:
+        match = process.extractOne(vendor_name, canonical_names, scorer=fuzz.WRatio)
+        if match and match[1] >= 90: # High threshold for automatic fuzzy matching
+            matched_name = match[0]
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT id FROM vendors WHERE canonical_name = %s LIMIT 1",
+                    (matched_name,)
+                )
+                res = cur.fetchone()
+                if res:
+                    vendor_id = res['id']
+                    # Store in cache for next time
+                    update_cache(vendor_name, matched_name, vendor_id, float(match[1])/100.0)
+                    return vendor_id, matched_name, "FUZZY_MATCH", float(match[1])/100.0
+
+    # Tier 5: Bedrock LLM Fallback
     canonical_name = call_bedrock_standardization_with_retry(vendor_name)
-    
+
     # After LLM, check if the NEW canonical name exists in DB
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -98,7 +143,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             (canonical_name,)
         )
         result = cur.fetchone()
-        
+
         if result:
             vendor_id = result['id']
         else:
@@ -120,24 +165,31 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             except Exception as e:
                 logger.error(f"Failed to create vendor {canonical_name}: {e}")
                 # Fallback to lookup one more time in case of race condition
-                cur.execute("SELECT id FROM vendors WHERE canonical_name = %s", (canonical_name,))
+                cur.execute(
+                    "SELECT id FROM vendors WHERE canonical_name = %s", (canonical_name,))
                 result = cur.fetchone()
                 if result:
                     vendor_id = result[0]
 
     # Update DynamoDB Cache
+    update_cache(vendor_name, canonical_name, vendor_id, 0.95)
+
+    return vendor_id, canonical_name, "LLM_RESOLUTION", 0.95
+
+
+def update_cache(vendor_name, canonical_name, vendor_id, confidence):
+    """Updates the DynamoDB entity resolution cache."""
     try:
         cache_table.put_item(Item={
             'vendor_name': vendor_name,
             'canonical_name': canonical_name,
             'vendor_id': vendor_id,
-            'confidence': '0.95',
-            'ttl': int(time.time() + (90 * 24 * 60 * 60)) # 90 days
+            'confidence': str(confidence),
+            'ttl': int(time.time() + (90 * 24 * 60 * 60))  # 90 days
         })
     except Exception as e:
         logger.warning(f"Failed to update DynamoDB cache: {e}")
 
-    return vendor_id, canonical_name, "LLM_RESOLUTION", 0.95
 
 def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
     """Calls Bedrock with exponential backoff to handle throttling."""
@@ -155,53 +207,58 @@ def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
 
     for attempt in range(max_retries):
         try:
-            response = bedrock.invoke_model(body=body, modelId=BEDROCK_MODEL_ID)
+            response = bedrock.invoke_model(
+                body=body, modelId=BEDROCK_MODEL_ID)
             response_body = json.loads(response.get("body").read())
             return response_body["content"][0]["text"].strip()
         except Exception as e:
             if "ThrottlingException" in str(e) or "Too many requests" in str(e):
-                wait_time = (2 ** attempt) + random.random()
-                logger.warning(f"Bedrock throttled. Retrying in {wait_time:.2f}s...")
+                # More aggressive backoff for Bedrock
+                wait_time = (2 ** (attempt + 2)) + random.uniform(0, 1)
+                logger.warning(f"Bedrock throttled. Retrying in {
+                               wait_time:.2f}s (Attempt {attempt + 1}/{max_retries})...")
                 time.sleep(wait_time)
                 continue
             logger.error(f"Bedrock failed: {e}")
             break
-            
+
     return messy_name
 
 # -----------------------------------------------------------------------------
 # Main Handler
 # -----------------------------------------------------------------------------
 
+
 def lambda_handler(event, context):
     logger.info(f"Processing batch of {len(event['Records'])} messages")
-    
+
     conn = get_db_connection()
     conn.autocommit = True
-    
+
     processed_count = 0
-    
+
     try:
         for record in event['Records']:
             contract_data = json.loads(record['body'])
-            
+
             vendor_name = contract_data.get('Recipient Name')
             duns = contract_data.get('Recipient DUNS')
             uei = contract_data.get('Recipient UEI')
-            
+
             if not vendor_name:
                 continue
-                
+
             # 1. Resolve Vendor
-            vendor_id, canonical_name, method, confidence = resolve_vendor(vendor_name, duns, uei, conn)
-            
+            vendor_id, canonical_name, method, confidence = resolve_vendor(
+                vendor_name, duns, uei, conn)
+
             # 2. Store Contract
             with conn.cursor() as cur:
                 contract_uuid = str(uuid.uuid4())
                 signed_date = contract_data.get('Start Date')
                 if not signed_date:
                     signed_date = date.today().strftime("%Y-%m-%d")
-                
+
                 try:
                     # Added signed_date to ON CONFLICT to match partitioned index
                     cur.execute(
@@ -226,8 +283,9 @@ def lambda_handler(event, context):
                     )
                     processed_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to insert contract {contract_data.get('Award ID')}: {e}")
-                    
+                    logger.error(f"Failed to insert contract {
+                                 contract_data.get('Award ID')}: {e}")
+
         return {
             "statusCode": 200,
             "body": json.dumps({"processed": processed_count})

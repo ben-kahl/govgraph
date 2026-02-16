@@ -67,8 +67,8 @@ def fetch_contracts(start_date, end_date):
             break
 
         all_results.extend(results)
-        # Limit to 10 pages (1000 records) for testing/prototype
-        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 10:
+        # Limit to 5 pages (500 records) for testing/prototype
+        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 5:
             break
         page += 1
 
@@ -115,16 +115,17 @@ def lambda_handler(event, context):
     # Get configuration from event
     days_back = event.get('days', 3)  # Default to 3 days to handle lag
     target_date = event.get('date')
-    
+
     today = datetime.date.today()
-    
+
     if target_date:
         start_date = target_date
         end_date = target_date
     else:
         # Fetch a range to ensure we capture late-reported data
         # Federal data has a 24-72h reporting lag
-        start_date = (today - datetime.timedelta(days=days_back)).strftime("%Y-%m-%d")
+        start_date = (today - datetime.timedelta(days=days_back)
+                      ).strftime("%Y-%m-%d")
         end_date = today.strftime("%Y-%m-%d")
 
     logger.info(f"Starting ingestion: {start_date} to {end_date}")
