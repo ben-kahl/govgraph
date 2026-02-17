@@ -106,10 +106,15 @@ def send_to_queue(contracts):
                 'MessageBody': json.dumps(contract)
             })
 
-        sqs_client.send_message_batch(
+        response = sqs_client.send_message_batch(
             QueueUrl=SQS_QUEUE_URL,
             Entries=entries
         )
+        if response.get('Failed'):
+            failed_ids = [f['id'] for f in response['Failed']]
+            logger.error(f"Failed to send messages: {failed_ids}")
+            raise RuntimeError(f"SQS batch send partially failed: {
+                               len(response['Failed'])} messages")
 
 
 def lambda_handler(event, context):
