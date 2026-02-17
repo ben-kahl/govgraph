@@ -259,8 +259,9 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             vendor_id = result['id']
         else:
             # Create new vendor if not found
-            vendor_id = str(uuid.uuid4())
+            vendor_id = None
             try:
+                new_vendor_id = str(uuid.uuid64())
                 cur.execute(
                     """
                     INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
@@ -269,7 +270,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                         updated_at = NOW()
                     RETURNING id
                     """,
-                    (vendor_id, canonical_name, duns, uei)
+                    (new_vendor_id, canonical_name, duns, uei)
                 )
                 res = cur.fetchone()
                 if res:
@@ -284,6 +285,11 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                 result = cur.fetchone()
                 if result:
                     vendor_id = result['id']
+            if not vendor_id:
+                logger.error(
+                    "LLM resolution returned a canonical name but vendor persistence failed; skipping cache update."
+                )
+                return None, canonical_name, "LLM_RESOLUTION_FAILED", 0.0
 
     # Update DynamoDB Cache
     update_cache(vendor_name, canonical_name, vendor_id, 0.95)
@@ -456,16 +462,17 @@ def lambda_handler(event, context):
                             contract_data.get('Award Type')
                         )
                     )
-                    
+
                     # Mark raw contract as processed
                     cur.execute(
                         "UPDATE raw_contracts SET processed = TRUE WHERE id = %s",
                         (raw_contract_id,)
                     )
-                    
+
                     processed_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to insert contract {usaspending_id}: {e}")
+                    logger.error(f"Failed to insert contract {
+                                 usaspending_id}: {e}")
                     with conn.cursor() as err_cur:
                         err_cur.execute(
                             "UPDATE raw_contracts SET processing_errors = %s WHERE id = %s",
