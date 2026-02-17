@@ -1,6 +1,7 @@
 # -----------------------------------------------------------------------------
 # VPC
 # -----------------------------------------------------------------------------
+# TODO: Investigate using fcknat to get around nat gateway costs, currently roadblocked by vpc endpoint approach for the sync lambda
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.6.0"
