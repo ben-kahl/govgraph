@@ -68,11 +68,6 @@ module "ingestion_lambda" {
           module.db.db_instance_master_user_secret_arn,
           "${aws_s3_bucket.raw_data.arn}/*"
         ]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = "*"
       }
     ]
   })
