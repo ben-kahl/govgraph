@@ -261,7 +261,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             # Create new vendor if not found
             vendor_id = None
             try:
-                new_vendor_id = str(uuid.uuid64())
+                new_vendor_id = str(uuid.uuid4())
                 cur.execute(
                     """
                     INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
