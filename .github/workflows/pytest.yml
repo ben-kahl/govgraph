@@ -25,7 +25,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd src/
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-mock psycopg2 boto3
@@ -35,27 +34,3 @@ jobs:
         id: test
         run: |
           python -m pytest
-
-      - name: Output test results to PR conversation
-        uses: actions/github-script@v6
-        if: github.event_name == 'pull_request'
-        env:
-          RESULTS: "pytest\n${{ steps.test.outputs.stdout }}"
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const output = `### Pytest 🧪\`${{ steps.test.outcome }}\`
-            <details><summary>Show Test Output</summary>
-            \`\`\`\n
-            ${process.env.RESULTS}
-            \`\`\`
-
-            </details>`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
-
