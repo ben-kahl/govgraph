@@ -43,13 +43,13 @@ def get_neo4j_driver():
 def sync_agencies(pg_conn, neo4j_session):
     print("Syncing Agencies...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Find unsynced agencies
+        # Find unsynced or updated agencies
         cur.execute("""
             SELECT a.* 
             FROM agencies a
             LEFT JOIN neo4j_sync_status s 
                 ON s.entity_type = 'agency' AND s.entity_id = a.id
-            WHERE s.id IS NULL OR s.sync_status != 'synced'
+            WHERE s.id IS NULL OR s.sync_status != 'synced' OR a.updated_at > s.synced_at
         """)
         agencies = cur.fetchall()
 
@@ -77,14 +77,14 @@ def sync_agencies(pg_conn, neo4j_session):
 def sync_vendors(pg_conn, neo4j_session):
     print("Syncing High-Value Vendors (>$1M)...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Calculate total value and only sync vendors > $1M to stay in free tier
+        # Calculate total value and sync vendors > $1M if new or updated
         cur.execute("""
             SELECT v.*, SUM(c.obligated_amount) as total_value
             FROM vendors v
             JOIN contracts c ON v.id = c.vendor_id
             LEFT JOIN neo4j_sync_status s 
                 ON s.entity_type = 'vendor' AND s.entity_id = v.id
-            WHERE (s.id IS NULL OR s.sync_status != 'synced')
+            WHERE (s.id IS NULL OR s.sync_status != 'synced' OR v.updated_at > s.synced_at)
             GROUP BY v.id
             HAVING SUM(c.obligated_amount) >= 1000000
         """)
@@ -117,7 +117,7 @@ def sync_vendors(pg_conn, neo4j_session):
 def sync_contracts(pg_conn, neo4j_session):
     print("Syncing Contracts for High-Value Vendors...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Only sync contracts for vendors that have been synced to Neo4j
+        # Sync contracts for synced vendors if they are new or updated
         cur.execute("""
             SELECT c.* 
             FROM contracts c
@@ -125,19 +125,20 @@ def sync_contracts(pg_conn, neo4j_session):
                 ON s_vendor.entity_id = c.vendor_id AND s_vendor.entity_type = 'vendor'
             LEFT JOIN neo4j_sync_status s 
                 ON s.entity_type = 'contract' AND s.entity_id = c.id
-            WHERE (s.id IS NULL OR s.sync_status != 'synced')
+            WHERE (s.id IS NULL OR s.sync_status != 'synced' OR c.updated_at > s.synced_at)
               AND s_vendor.sync_status = 'synced'
         """)
         contracts = cur.fetchall()
 
         for contract in contracts:
-            # Create Contract Node
+            # Create/Update Contract Node
             query_node = """
             MERGE (c:Contract {id: $id})
             SET c.contractId = $contract_id,
                 c.description = $desc,
                 c.obligatedAmount = $amount,
                 c.signedDate = date($signed_date),
+                c.awardType = $award_type,
                 c.syncedAt = datetime()
             """
             neo4j_session.run(query_node,
@@ -146,7 +147,8 @@ def sync_contracts(pg_conn, neo4j_session):
                               desc=contract['description'],
                               amount=float(
                                   contract['obligated_amount']) if contract['obligated_amount'] else 0.0,
-                              signed_date=contract['signed_date'])
+                              signed_date=contract['signed_date'],
+                              award_type=contract['award_type'])
 
             # Link to Vendor
             if contract['vendor_id']:

@@ -26,7 +26,6 @@ BEDROCK_MODEL_ID = os.environ.get(
 
 SAM_API_BASE_URL = "https://api.sam.gov/entity-information/v3/entities"
 SAM_API_KEY_SECRET_ARN = os.environ.get("SAM_API_KEY_SECRET_ARN")
-SAM_PROXY_LAMBDA_NAME = os.environ.get("SAM_PROXY_LAMBDA_NAME")
 
 # Clients (initialized lazily)
 bedrock = None
@@ -106,33 +105,30 @@ def refresh_canonical_names_cache(conn):
 
 def get_sam_entity(uei=None, vendor_name=None):
     """
-    Fetches entity data from SAM.gov API via a proxy Lambda.
-    This bypasses VPC internet restrictions.
+    Fetches entity data directly from SAM.gov API.
     """
-    if not SAM_PROXY_LAMBDA_NAME:
+    if not SAM_API_KEY_SECRET_ARN:
         logger.warning(
-            "SAM_PROXY_LAMBDA_NAME not configured. Skipping SAM Tier.")
+            "SAM_API_KEY_SECRET_ARN not configured. Skipping SAM Tier.")
         return None
 
-    payload = {
-        "ueiSAM": uei,
-        "entityName": vendor_name if not uei else None
-    }
-
     try:
-        response = get_lambda_client().invoke(
-            FunctionName=SAM_PROXY_LAMBDA_NAME,
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
+        secrets = get_secret(SAM_API_KEY_SECRET_ARN)
+        api_key = secrets.get('api_key')
 
-        result = json.loads(response['Payload'].read())
+        params = {"api_key": api_key}
+        if uei:
+            params["ueiSAM"] = uei
+        elif vendor_name:
+            params["entityName"] = vendor_name
 
-        if result.get('statusCode') == 200:
-            body = json.loads(result.get('body', '{}'))
+        url = SAM_API_BASE_URL
+        response = requests.get(url, params=params, timeout=10)
+
+        if response.status_code == 200:
+            body = response.json()
             entity_data = body.get('entityData', [])
             if entity_data:
-                # Return the first high-confidence match
                 entity = entity_data[0]
                 return {
                     "canonical_name": entity.get('entityRegistration', {}).get('legalBusinessName'),
@@ -141,7 +137,7 @@ def get_sam_entity(uei=None, vendor_name=None):
                     "confidence": 1.0
                 }
     except Exception as e:
-        logger.error(f"SAM API Proxy call failed: {e}")
+        logger.error(f"SAM API call failed: {e}")
 
     return None
 
@@ -435,6 +431,11 @@ def lambda_handler(event, context):
                 if not signed_date:
                     signed_date = date.today().strftime("%Y-%m-%d")
 
+                # Enhanced description combining canonical name and original description
+                raw_desc = contract_data.get(
+                    'Description', 'No description provided')
+                formatted_desc = f"Vendor: {canonical_name} | {raw_desc}"
+
                 try:
                     cur.execute(
                         """
@@ -448,6 +449,8 @@ def lambda_handler(event, context):
                             vendor_id = EXCLUDED.vendor_id,
                             agency_id = EXCLUDED.agency_id,
                             obligated_amount = EXCLUDED.obligated_amount,
+                            description = EXCLUDED.description,
+                            award_type = EXCLUDED.award_type,
                             updated_at = NOW()
                         """,
                         (
@@ -456,10 +459,10 @@ def lambda_handler(event, context):
                             vendor_id,
                             agency_id,
                             raw_contract_id,
-                            f"Contract for {canonical_name}",
+                            formatted_desc,
                             contract_data.get('Award Amount', 0),
                             signed_date,
-                            contract_data.get('Award Type')
+                            contract_data.get('Contract Award Type')
                         )
                     )
 

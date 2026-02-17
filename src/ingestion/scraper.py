@@ -38,12 +38,12 @@ def fetch_contracts(start_date, end_date):
     payload = {
         "filters": {
             "time_period": [{"start_date": start_date, "end_date": end_date}],
-            "award_type_codes": ["A", "B", "C", "D"]
+            "award_type_codes": ["A", "B", "C", "D", "IDV_A", "IDV_B", "IDV_C", "IDV_D", "IDV_E"]
         },
         "fields": [
             "Award ID", "Recipient Name", "Award Amount", "Awarding Agency",
-            "Awarding Agency Code", "Start Date", "End Date", "Award Type",
-            "Recipient UEI", "Recipient DUNS"
+            "Awarding Agency Code", "Start Date", "End Date", "Contract Award Type",
+            "Recipient UEI", "Recipient DUNS", "Description"
         ],
         "limit": 100,
         "page": 1
