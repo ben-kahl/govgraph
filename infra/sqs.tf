@@ -16,6 +16,10 @@ module "sqs" {
   create_dlq              = true
   sqs_managed_sse_enabled = true
 
+  redrive_policy = {
+    maxReceiveCount = 3
+  }
+
 
   tags = {
     Terraform   = "true"
