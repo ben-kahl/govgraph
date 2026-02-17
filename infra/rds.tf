@@ -24,7 +24,7 @@ module "db" {
   manage_master_user_password = true
   port                        = 5432
 
-  multi_az                    = false
+  multi_az                     = false
   performance_insights_enabled = false
 
   db_subnet_group_name   = module.vpc.database_subnet_group_name

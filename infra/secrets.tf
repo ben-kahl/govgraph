@@ -12,8 +12,8 @@ resource "aws_secretsmanager_secret" "neo4j_credentials" {
 }
 
 resource "aws_secretsmanager_secret" "sam_api_key" {
-  name        = "gov-graph/sam-api-key"
-  description = "SAM.gov API Key (Manually populated)"
+  name                    = "gov-graph/sam-api-key"
+  description             = "SAM.gov API Key (Manually populated)"
   recovery_window_in_days = 0
 
   tags = {
