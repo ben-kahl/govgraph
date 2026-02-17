@@ -134,9 +134,13 @@ module "processing_lambda" {
         ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = ["arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"]
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+        ]
       }
     ]
   })
