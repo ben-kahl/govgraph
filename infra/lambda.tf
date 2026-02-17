@@ -121,7 +121,6 @@ module "processing_lambda" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes",
           "secretsmanager:GetSecretValue",
-          "bedrock:InvokeModel",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
@@ -131,9 +130,13 @@ module "processing_lambda" {
           module.sqs.queue_arn,
           module.db.db_instance_master_user_secret_arn,
           aws_dynamodb_table.entity_cache.arn,
-          module.sam_proxy_lambda.lambda_function_arn,
-          "*"
+          module.sam_proxy_lambda.lambda_function_arn
         ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = ["arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"]
       }
     ]
   })
