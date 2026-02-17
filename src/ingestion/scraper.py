@@ -55,7 +55,8 @@ def fetch_contracts(start_date, end_date):
     while True:
         logger.info(f"Fetching page {page}...")
         payload["page"] = page
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers,
+                                 json=payload, timeout=30)
 
         if response.status_code != 200:
             logger.error(f"Error fetching data: {
