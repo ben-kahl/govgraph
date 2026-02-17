@@ -26,8 +26,10 @@ EventBridge Schedule (Daily 6am UTC)
 Lambda Scraper → S3 (archival) + SQS (raw contracts queue)
     ↓
 Lambda Entity Resolver (SQS-triggered, 10 concurrent)
+    ├─→ SAM Entity Manager API (Public repo with entity names)
     ├─→ DynamoDB (entity resolution cache)
-    ├─→ Bedrock (LLM for novel entities, ~5% of requests)
+    ├─→ RapidFuzz (fuzzy find from cache)
+    ├─→ Bedrock (LLM for novel entities)
     └─→ RDS PostgreSQL (cleaned, structured data)
     ↓
 Lambda Neo4j Syncer (triggered by DynamoDB Streams)
@@ -36,7 +38,7 @@ Lambda Neo4j Syncer (triggered by DynamoDB Streams)
 
 ### Key Design Decisions
 * **Serverless-First:** Eliminated Kubernetes/EKS to reduce costs from $126/month to <$15/month
-* **4-Tier Entity Resolution:** DUNS/UEI exact match (40%) → canonical name match (20%) → fuzzy matching (30%) → DynamoDB cache (5%) → Bedrock LLM (5%)
+* **6-Tier Entity Resolution:** DUNS/UEI exact match → canonical name match → fuzzy matching → DynamoDB cache → Bedrock LLM
 * **VPC Endpoints:** Replaced NAT Gateway ($33/month) with VPC endpoints ($7/month) for AWS service access
 * **Selective Neo4j Sync:** Only sync vendors with >$1M contract value to stay within free tier limits (50K nodes, 175K relationships)
 * **S3 Data Lake:** Archive raw USAspending JSON for reprocessing and historical analysis

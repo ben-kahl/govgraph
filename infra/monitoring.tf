@@ -22,6 +22,29 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 }
 
 # -----------------------------------------------------------------------------
+# EventBridge Schedule (Daily 7am UTC for Neo4j Sync)
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_event_rule" "daily_sync" {
+  name                = "gov-graph-daily-sync"
+  description         = "Triggers Neo4j sync Lambda daily at 7am UTC"
+  schedule_expression = "cron(0 7 * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "sync_target" {
+  rule      = aws_cloudwatch_event_rule.daily_sync.name
+  target_id = "SyncLambda"
+  arn       = module.sync_lambda.lambda_function_arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_sync" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = module.sync_lambda.lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_sync.arn
+}
+
+# -----------------------------------------------------------------------------
 # CloudWatch Dashboard
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_dashboard" "main" {

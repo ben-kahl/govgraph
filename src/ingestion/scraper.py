@@ -42,7 +42,7 @@ def fetch_contracts(start_date, end_date):
         },
         "fields": [
             "Award ID", "Recipient Name", "Award Amount", "Awarding Agency",
-            "Awarding Agency Code", "Start Date", "End Date", "Award Type", 
+            "Awarding Agency Code", "Start Date", "End Date", "Award Type",
             "Recipient UEI", "Recipient DUNS"
         ],
         "limit": 100,
@@ -68,8 +68,8 @@ def fetch_contracts(start_date, end_date):
             break
 
         all_results.extend(results)
-        # Limit to 5 pages (500 records) for testing/prototype
-        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 1:
+        # Limit to 20 pages (2000 records) for backfill/prototype limits
+        if not data.get("page_metadata", {}).get("hasNext", False) or page >= 20:
             break
         page += 1
 

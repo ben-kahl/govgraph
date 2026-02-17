@@ -75,14 +75,18 @@ def sync_agencies(pg_conn, neo4j_session):
 
 
 def sync_vendors(pg_conn, neo4j_session):
-    print("Syncing Vendors...")
+    print("Syncing High-Value Vendors (>$1M)...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Calculate total value and only sync vendors > $1M to stay in free tier
         cur.execute("""
-            SELECT v.* 
+            SELECT v.*, SUM(c.obligated_amount) as total_value
             FROM vendors v
+            JOIN contracts c ON v.id = c.vendor_id
             LEFT JOIN neo4j_sync_status s 
                 ON s.entity_type = 'vendor' AND s.entity_id = v.id
-            WHERE s.id IS NULL OR s.sync_status != 'synced'
+            WHERE (s.id IS NULL OR s.sync_status != 'synced')
+            GROUP BY v.id
+            HAVING SUM(c.obligated_amount) >= 1000000
         """)
         vendors = cur.fetchall()
 
@@ -94,6 +98,7 @@ def sync_vendors(pg_conn, neo4j_session):
                 v.uei = $uei,
                 v.state = $state,
                 v.city = $city,
+                v.totalContractValue = $total_value,
                 v.syncedAt = datetime()
             """
             neo4j_session.run(query,
@@ -102,21 +107,26 @@ def sync_vendors(pg_conn, neo4j_session):
                               duns=vendor['duns'],
                               uei=vendor['uei'],
                               state=vendor['state'],
-                              city=vendor['city'])
+                              city=vendor['city'],
+                              total_value=float(vendor['total_value']))
 
             mark_synced(pg_conn, 'vendor', vendor['id'])
-    print(f"Synced {len(vendors)} vendors.")
+    print(f"Synced {len(vendors)} high-value vendors.")
 
 
 def sync_contracts(pg_conn, neo4j_session):
-    print("Syncing Contracts...")
+    print("Syncing Contracts for High-Value Vendors...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Only sync contracts for vendors that have been synced to Neo4j
         cur.execute("""
             SELECT c.* 
             FROM contracts c
+            JOIN neo4j_sync_status s_vendor 
+                ON s_vendor.entity_id = c.vendor_id AND s_vendor.entity_type = 'vendor'
             LEFT JOIN neo4j_sync_status s 
                 ON s.entity_type = 'contract' AND s.entity_id = c.id
-            WHERE s.id IS NULL OR s.sync_status != 'synced'
+            WHERE (s.id IS NULL OR s.sync_status != 'synced')
+              AND s_vendor.sync_status = 'synced'
         """)
         contracts = cur.fetchall()
 
@@ -144,13 +154,13 @@ def sync_contracts(pg_conn, neo4j_session):
                 MATCH (c:Contract {id: $c_id})
                 MATCH (v:Vendor {id: $v_id})
                 MERGE (v)-[:AWARDED]->(c)
-                MERGE (c)-[:AWARDED_TO]->(v)
                 """
                 neo4j_session.run(query_rel_vendor, c_id=str(
                     contract['id']), v_id=str(contract['vendor_id']))
 
             # Link to Agency
             if contract['agency_id']:
+                # Ensure agency exists in Neo4j (it should if sync_agencies ran first)
                 query_rel_agency = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (a:Agency {id: $a_id})
