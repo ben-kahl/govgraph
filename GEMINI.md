@@ -48,6 +48,12 @@ Lambda Neo4j Syncer (triggered by DynamoDB Streams)
 * Comprehensive docstrings (PEP 257)
 * Robust unit and integration testing (>80% coverage target)
 
+## Testing
+* Use the virtual environment in ./venv/
+``` bash
+venv/bin/python -m pytest
+```
+
 ## Installation & Deployment
 
 ### Prerequisites
@@ -106,7 +112,7 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
 ### Current Status
 * [x] System design completed (serverless architecture)
 * [x] Terraform backend configured
-* [ ] Phase 1: ETL Backend Pipeline
+* [x] Phase 1: ETL Backend Pipeline
 
 ### Phase 1: Data Pipeline (Serverless)
 **Focus:** Ingest, clean, and store contract data using Lambda-based event-driven architecture
@@ -178,14 +184,14 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
 **Focus:** Expose data via REST API and deploy frontend
 
 * **Task 3.1: FastAPI Lambda**
-  * Create API routes: /search, /vendor/{id}, /contracts/{id}
+  * Create API routes: /search, /vendor/{id}, /agencies/{id},/contracts/{id}
   * Implement pagination, filtering, sorting
   * Add Redis caching layer (ElastiCache) for frequent queries
   * *Success:* API returns results in <200ms, handles 100 req/min
   * *Tech:* FastAPI, Mangum (Lambda adapter), API Gateway
 
 * **Task 3.2: Authentication & Rate Limiting**
-  * Implement OAuth 2.0 with Auth0 or AWS Cognito
+  * Implement OAuth 2.0 with AWS Cognito
   * Add API key-based rate limiting (slowapi)
   * Configure CORS for frontend domain
   * *Success:* Secure API with per-user rate limits
