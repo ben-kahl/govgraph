@@ -14,35 +14,40 @@ def mock_conn():
 
 
 def test_get_sam_entity_success(mocker):
-    # Mock successful SAM proxy response
-    mock_lambda = mocker.patch(
-        'src.processing.entity_resolver.get_lambda_client')
-    mock_lambda_instance = mock_lambda.return_value
-
-    mock_payload = {
-        'statusCode': 200,
-        'body': json.dumps({
-            'entityData': [{
-                'entityRegistration': {
-                    'legalBusinessName': 'ACME CORP',
-                    'ueiSAM': 'UEI123456789',
-                    'duns': '123456789'
-                }
-            }]
-        })
-    }
-
+    # Mock secrets and requests
+    mock_get_secret = mocker.patch('src.processing.entity_resolver.get_secret')
+    mock_get_secret.return_value = {'api_key': 'fake-key'}
+    
+    mock_requests = mocker.patch('src.processing.entity_resolver.requests.get')
     mock_response = MagicMock()
-    mock_response.__getitem__.return_value.read.return_value = json.dumps(
-        mock_payload).encode('utf-8')
-    mock_lambda_instance.invoke.return_value = mock_response
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        'entityData': [{
+            'entityRegistration': {
+                'legalBusinessName': 'ACME CORP',
+                'ueiSAM': 'UEI123456789',
+                'duns': '123456789'
+            }
+        }]
+    }
+    mock_requests.return_value = mock_response
 
-    with patch('src.processing.entity_resolver.SAM_PROXY_LAMBDA_NAME', 'test-proxy'):
+    with patch('src.processing.entity_resolver.SAM_API_KEY_SECRET_ARN', "arn:aws:secrets:123"):
         result = get_sam_entity(uei='UEI123456789')
 
     assert result is not None
     assert result['canonical_name'] == 'ACME CORP'
     assert result['uei'] == 'UEI123456789'
+    
+    # Verify API call
+    args, kwargs = mock_requests.call_args
+    assert kwargs['params']['ueiSAM'] == 'UEI123456789'
+    assert kwargs['params']['api_key'] == 'fake-key'
+
+def test_get_sam_entity_no_config(mocker):
+    with patch('src.processing.entity_resolver.SAM_API_KEY_SECRET_ARN', None):
+        result = get_sam_entity(uei='UEI123')
+    assert result is None
 
 
 def test_resolve_vendor_sam_match_new_vendor(mocker, mock_conn):
