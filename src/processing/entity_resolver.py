@@ -145,15 +145,54 @@ def get_sam_entity(uei=None, vendor_name=None):
 def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     """
     6-Tier Resolution Strategy:
-    1. Check SAM entity API
+    1. DynamoDB cache lookup (Fast-path for previously resolved messy names)
     2. DUNS/UEI exact match (RDS)
     3. Canonical name exact match (RDS)
-    4. DynamoDB cache lookup
+    4. SAM entity API match (External truth)
     5. Fuzzy matching (rapidfuzz)
     6. Bedrock LLM Fallback
     """
 
-    # Tier 1: SAM entity API match
+    # Tier 1: DynamoDB Cache
+    try:
+        cache_resp = get_cache_table().get_item(
+            Key={'vendor_name': vendor_name})
+        if 'Item' in cache_resp:
+            item = cache_resp['Item']
+            # Quick verification that the vendor still exists in RDS
+            vendor_id = item['vendor_id']
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id FROM vendors WHERE id = %s LIMIT 1", (vendor_id,))
+                if cur.fetchone():
+                    logger.info(f"RESOLVE: Cache Hit for {vendor_name}")
+                    return vendor_id, item['canonical_name'], "CACHE_MATCH", float(item.get('confidence', 0.9))
+    except Exception as e:
+        logger.warning(f"DynamoDB cache lookup failed: {e}")
+
+    # Tier 2: DUNS/UEI exact match
+    if duns or uei:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, canonical_name FROM vendors WHERE duns = %s OR uei = %s LIMIT 1",
+                (duns, uei)
+            )
+            result = cur.fetchone()
+            if result:
+                logger.info(f"RESOLVE: ID Match for {vendor_name}")
+                return result['id'], result['canonical_name'], "DUNS_UEI_MATCH", 1.0
+
+    # Tier 3: Canonical name exact match
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            "SELECT id, canonical_name FROM vendors WHERE canonical_name = %s LIMIT 1",
+            (vendor_name,)
+        )
+        result = cur.fetchone()
+        if result:
+            logger.info(f"RESOLVE: Exact Name Match for {vendor_name}")
+            return result['id'], result['canonical_name'], "EXACT_NAME_MATCH", 1.0
+
+    # Tier 4: SAM entity API match
     sam_result = get_sam_entity(uei=uei, vendor_name=vendor_name)
     if sam_result:
         canonical_name = sam_result['canonical_name']
@@ -168,63 +207,37 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             result = cur.fetchone()
 
             if result:
+                logger.info(f"RESOLVE: SAM Match (Existing) for {vendor_name}")
                 return result['id'], canonical_name, "SAM_API_MATCH", 1.0
             else:
                 # Create new vendor from SAM data
                 vendor_id = str(uuid.uuid4())
-                cur.execute(
-                    """
-                    INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
-                    VALUES (%s, %s, %s, %s, FALSE, 1.0)
-                    ON CONFLICT (canonical_name) DO UPDATE SET 
-                        uei = EXCLUDED.uei,
-                        duns = EXCLUDED.duns,
-                        updated_at = NOW()
-                    RETURNING id
-                    """,
-                    (vendor_id, canonical_name, sam_duns, sam_uei)
-                )
-                res = cur.fetchone()
-                if res:
-                    vendor_id = res['id']
+                with conn.cursor(cursor_factory=RealDictCursor) as insert_cur:
+                    insert_cur.execute(
+                        """
+                        INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
+                        VALUES (%s, %s, %s, %s, FALSE, 1.0)
+                        ON CONFLICT (canonical_name) DO UPDATE SET 
+                            uei = EXCLUDED.uei,
+                            duns = EXCLUDED.duns,
+                            updated_at = NOW()
+                        RETURNING id
+                        """,
+                        (vendor_id, canonical_name, sam_duns, sam_uei)
+                    )
+                    res = insert_cur.fetchone()
+                    if res:
+                        vendor_id = res['id']
+                logger.info(f"RESOLVE: SAM Match (New) for {vendor_name}")
                 return vendor_id, canonical_name, "SAM_API_MATCH", 1.0
-
-    # Tier 2: DUNS/UEI exact match
-    if duns or uei:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT id, canonical_name FROM vendors WHERE duns = %s OR uei = %s LIMIT 1",
-                (duns, uei)
-            )
-            result = cur.fetchone()
-            if result:
-                return result['id'], result['canonical_name'], "DUNS_UEI_MATCH", 1.0
-
-    # Tier 3: Canonical name exact match
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(
-            "SELECT id, canonical_name FROM vendors WHERE canonical_name = %s LIMIT 1",
-            (vendor_name,)
-        )
-        result = cur.fetchone()
-        if result:
-            return result['id'], result['canonical_name'], "EXACT_NAME_MATCH", 1.0
-
-    # Tier 4: DynamoDB Cache (Previous resolution results for this messy name)
-    try:
-        cache_resp = get_cache_table().get_item(
-            Key={'vendor_name': vendor_name})
-        if 'Item' in cache_resp:
-            item = cache_resp['Item']
-            return item['vendor_id'], item['canonical_name'], "CACHE_MATCH", float(item.get('confidence', 0.9))
-    except Exception as e:
-        logger.warning(f"DynamoDB cache lookup failed: {e}")
 
     # Tier 5: Fuzzy Matching
     canonical_names = refresh_canonical_names_cache(conn)
+    logger.info(f"RESOLVE: Fuzzy Tier - {len(canonical_names) if canonical_names else 0} names in cache")
     if canonical_names:
         match = process.extractOne(
             vendor_name, canonical_names, scorer=fuzz.WRatio)
+        logger.info(f"RESOLVE: Fuzzy match result for {vendor_name}: {match}")
         if match and match[1] >= 90:  # High threshold for automatic fuzzy matching
             matched_name = match[0]
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -238,9 +251,11 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                     # Store in cache for next time
                     update_cache(vendor_name, matched_name,
                                  vendor_id, float(match[1])/100.0)
+                    logger.info(f"RESOLVE: Fuzzy Match Hit for {vendor_name}")
                     return vendor_id, matched_name, "FUZZY_MATCH", float(match[1])/100.0
 
     # Tier 6: Bedrock LLM Fallback
+    logger.info(f"RESOLVE: LLM Fallback for {vendor_name}")
     canonical_name = call_bedrock_standardization_with_retry(vendor_name)
 
     # After LLM, check if the NEW canonical name exists in DB
@@ -258,19 +273,20 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             vendor_id = None
             try:
                 new_vendor_id = str(uuid.uuid4())
-                cur.execute(
-                    """
-                    INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
-                    VALUES (%s, %s, %s, %s, TRUE, 0.95)
-                    ON CONFLICT (canonical_name) DO UPDATE SET 
-                        updated_at = NOW()
-                    RETURNING id
-                    """,
-                    (new_vendor_id, canonical_name, duns, uei)
-                )
-                res = cur.fetchone()
-                if res:
-                    vendor_id = res['id']
+                with conn.cursor(cursor_factory=RealDictCursor) as insert_cur:
+                    insert_cur.execute(
+                        """
+                        INSERT INTO vendors (id, canonical_name, duns, uei, resolved_by_llm, resolution_confidence)
+                        VALUES (%s, %s, %s, %s, TRUE, 0.95)
+                        ON CONFLICT (canonical_name) DO UPDATE SET 
+                            updated_at = NOW()
+                        RETURNING id
+                        """,
+                        (new_vendor_id, canonical_name, duns, uei)
+                    )
+                    res = insert_cur.fetchone()
+                    if res:
+                        vendor_id = res['id']
             except Exception as e:
                 logger.error(f"Failed to create vendor {canonical_name}: {e}")
                 # Fallback to lookup one more time in case of race condition or other constraint failure
@@ -345,8 +361,11 @@ def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
 # -----------------------------------------------------------------------------
 
 
-def resolve_agency(agency_name, agency_code, conn):
-    """Resolves an agency by code, creating it if it doesn't exist."""
+def resolve_agency(agency_name, agency_code, parent_agency_id=None, conn=None):
+    """
+    Resolves an agency by code, creating it if it doesn't exist.
+    Supports parent/child relationships.
+    """
     if not agency_code:
         return None
 
@@ -363,14 +382,15 @@ def resolve_agency(agency_name, agency_code, conn):
         agency_id = str(uuid.uuid4())
         cur.execute(
             """
-            INSERT INTO agencies (id, agency_code, agency_name, updated_at)
-            VALUES (%s, %s, %s, NOW())
+            INSERT INTO agencies (id, agency_code, agency_name, parent_agency_id, updated_at)
+            VALUES (%s, %s, %s, %s, NOW())
             ON CONFLICT (agency_code) DO UPDATE SET 
                 agency_name = EXCLUDED.agency_name,
+                parent_agency_id = COALESCE(agencies.parent_agency_id, EXCLUDED.parent_agency_id),
                 updated_at = NOW()
             RETURNING id
             """,
-            (agency_id, agency_code, agency_name)
+            (agency_id, agency_code, agency_name, parent_agency_id)
         )
         res = cur.fetchone()
         return res['id'] if res else agency_id
@@ -387,100 +407,13 @@ def lambda_handler(event, context):
     try:
         for record in event['Records']:
             raw_payload = json.loads(record['body'])
-            contract_data = raw_payload
+            msg_type = raw_payload.get('type', 'prime')
+            contract_data = raw_payload.get('data', raw_payload)
 
-            usaspending_id = contract_data.get('Award ID')
-            vendor_name = contract_data.get('Recipient Name')
-            duns = contract_data.get('Recipient DUNS')
-            uei = contract_data.get('Recipient UEI')
-            agency_name = contract_data.get('Awarding Agency')
-            agency_code = contract_data.get('Awarding Agency Code')
-
-            if not usaspending_id:
-                continue
-
-            # 1. Insert into Raw Contracts (Landing Zone)
-            raw_contract_id = str(uuid.uuid4())
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO raw_contracts (id, usaspending_id, raw_payload, ingested_at)
-                    VALUES (%s, %s, %s, NOW())
-                    ON CONFLICT (usaspending_id) DO UPDATE SET 
-                        raw_payload = EXCLUDED.raw_payload,
-                        ingested_at = NOW()
-                    RETURNING id
-                    """,
-                    (raw_contract_id, usaspending_id, json.dumps(raw_payload))
-                )
-                res = cur.fetchone()
-                if res:
-                    raw_contract_id = res[0]
-
-            # 2. Resolve Agency
-            agency_id = resolve_agency(agency_name, agency_code, conn)
-
-            # 3. Resolve Vendor
-            vendor_id, canonical_name, method, confidence = resolve_vendor(
-                vendor_name, duns, uei, conn)
-
-            # 4. Store Contract
-            with conn.cursor() as cur:
-                contract_uuid = str(uuid.uuid4())
-                signed_date = contract_data.get('Start Date')
-                if not signed_date:
-                    signed_date = date.today().strftime("%Y-%m-%d")
-
-                # Enhanced description combining canonical name and original description
-                raw_desc = contract_data.get(
-                    'Description', 'No description provided')
-                formatted_desc = f"Vendor: {canonical_name} | {raw_desc}"
-
-                try:
-                    cur.execute(
-                        """
-                        INSERT INTO contracts (
-                            id, contract_id, vendor_id, agency_id, raw_contract_id,
-                            description, obligated_amount, signed_date, award_type, 
-                            created_at, updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                        ON CONFLICT (contract_id, signed_date) DO UPDATE SET 
-                            vendor_id = EXCLUDED.vendor_id,
-                            agency_id = EXCLUDED.agency_id,
-                            obligated_amount = EXCLUDED.obligated_amount,
-                            description = EXCLUDED.description,
-                            award_type = EXCLUDED.award_type,
-                            updated_at = NOW()
-                        """,
-                        (
-                            contract_uuid,
-                            usaspending_id,
-                            vendor_id,
-                            agency_id,
-                            raw_contract_id,
-                            formatted_desc,
-                            contract_data.get('Award Amount', 0),
-                            signed_date,
-                            contract_data.get('Contract Award Type')
-                        )
-                    )
-
-                    # Mark raw contract as processed
-                    cur.execute(
-                        "UPDATE raw_contracts SET processed = TRUE WHERE id = %s",
-                        (raw_contract_id,)
-                    )
-
-                    processed_count += 1
-                except Exception as e:
-                    logger.error(f"Failed to insert contract {
-                                 usaspending_id}: {e}")
-                    with conn.cursor() as err_cur:
-                        err_cur.execute(
-                            "UPDATE raw_contracts SET processing_errors = %s WHERE id = %s",
-                            (str(e), raw_contract_id)
-                        )
+            if msg_type == "prime":
+                processed_count += process_prime_award(contract_data, conn)
+            elif msg_type == "subaward":
+                processed_count += process_sub_award(contract_data, conn)
 
         return {
             "statusCode": 200,
@@ -488,3 +421,163 @@ def lambda_handler(event, context):
         }
     finally:
         conn.close()
+
+
+def process_prime_award(contract_data, conn):
+    """Processes a prime award record."""
+    usaspending_id = contract_data.get('Award ID')
+    vendor_name = contract_data.get('Recipient Name')
+    duns = contract_data.get('Recipient DUNS')
+    uei = contract_data.get('Recipient UEI')
+
+    if not usaspending_id:
+        return 0
+
+    # 1. Insert into Raw Contracts (Landing Zone)
+    raw_contract_id = str(uuid.uuid4())
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO raw_contracts (id, usaspending_id, raw_payload, ingested_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (usaspending_id) DO UPDATE SET 
+                raw_payload = EXCLUDED.raw_payload,
+                ingested_at = NOW()
+            RETURNING id
+            """,
+            (raw_contract_id, usaspending_id, json.dumps(contract_data))
+        )
+        res = cur.fetchone()
+        if res:
+            raw_contract_id = res[0]
+
+    # 2. Resolve Agency Hierarchy
+    # Awarding Agency (Top Tier)
+    agency_id = resolve_agency(
+        contract_data.get('Awarding Agency'),
+        contract_data.get('Awarding Agency Code'),
+        conn=conn
+    )
+    # Awarding Sub Agency
+    sub_agency_id = resolve_agency(
+        contract_data.get('Awarding Sub Agency'),
+        contract_data.get('Awarding Sub Agency Code'),
+        parent_agency_id=agency_id,
+        conn=conn
+    )
+
+    # Funding Agency
+    funding_agency_id = resolve_agency(
+        contract_data.get('Funding Agency'),
+        contract_data.get('Funding Agency Code'),
+        conn=conn
+    )
+    funding_sub_agency_id = resolve_agency(
+        contract_data.get('Funding Sub Agency'),
+        contract_data.get('Funding Sub Agency Code'),
+        parent_agency_id=funding_agency_id,
+        conn=conn
+    )
+
+    # 3. Resolve Vendor
+    vendor_id, canonical_name, method, confidence = resolve_vendor(
+        vendor_name, duns, uei, conn)
+
+    # 4. Store Contract
+    with conn.cursor() as cur:
+        contract_uuid = str(uuid.uuid4())
+        signed_date = contract_data.get('Start Date')
+        if not signed_date:
+            signed_date = date.today().strftime("%Y-%m-%d")
+
+        # Enhanced description
+        raw_desc = contract_data.get('Description', 'No description provided')
+        formatted_desc = f"Vendor: {canonical_name} | {raw_desc}"
+
+        try:
+            cur.execute(
+                """
+                INSERT INTO contracts (
+                    id, contract_id, vendor_id, agency_id, awarding_sub_agency_id,
+                    funding_agency_id, funding_sub_agency_id, raw_contract_id,
+                    description, obligated_amount, signed_date, award_type, 
+                    created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                ON CONFLICT (contract_id, signed_date) DO UPDATE SET 
+                    vendor_id = EXCLUDED.vendor_id,
+                    agency_id = EXCLUDED.agency_id,
+                    awarding_sub_agency_id = EXCLUDED.awarding_sub_agency_id,
+                    funding_agency_id = EXCLUDED.funding_agency_id,
+                    funding_sub_agency_id = EXCLUDED.funding_sub_agency_id,
+                    obligated_amount = EXCLUDED.obligated_amount,
+                    description = EXCLUDED.description,
+                    award_type = EXCLUDED.award_type,
+                    updated_at = NOW()
+                """,
+                (
+                    contract_uuid, usaspending_id, vendor_id, agency_id, sub_agency_id,
+                    funding_agency_id, funding_sub_agency_id, raw_contract_id,
+                    formatted_desc, contract_data.get('Award Amount', 0),
+                    signed_date, contract_data.get('Contract Award Type')
+                )
+            )
+            cur.execute("UPDATE raw_contracts SET processed = TRUE WHERE id = %s", (raw_contract_id,))
+            return 1
+        except Exception as e:
+            logger.error(f"Failed to insert prime contract {usaspending_id}: {e}")
+            cur.execute("UPDATE raw_contracts SET processing_errors = %s WHERE id = %s", (str(e), raw_contract_id))
+            return 0
+
+
+def process_sub_award(contract_data, conn):
+    """Processes a sub-award record and links it to prime awards."""
+    sub_award_id = contract_data.get('Sub-Award ID')
+    prime_id = contract_data.get('Prime Award ID')
+    sub_vendor_name = contract_data.get('Sub-Awardee Name')
+    sub_uei = contract_data.get('Sub-Recipient UEI')
+    prime_uei = contract_data.get('Prime Award Recipient UEI')
+
+    if not sub_award_id:
+        return 0
+
+    # 1. Resolve Sub-contractor Vendor
+    sub_vendor_id, _, _, _ = resolve_vendor(sub_vendor_name, uei=sub_uei, conn=conn)
+
+    # 2. Resolve Prime Vendor
+    prime_vendor_id, _, _, _ = resolve_vendor(contract_data.get('Prime Recipient Name'), uei=prime_uei, conn=conn)
+
+    # 3. Resolve Agency (limited for sub-awards in USAspending API)
+    agency_id = resolve_agency(
+        contract_data.get('Awarding Agency'),
+        contract_data.get('Awarding Agency Code'),
+        conn=conn
+    )
+
+    # 4. Persistence
+    with conn.cursor() as cur:
+        try:
+            # First find the prime contract record in our DB if it exists
+            cur.execute("SELECT id FROM contracts WHERE contract_id = %s LIMIT 1", (prime_id,))
+            prime_contract_row = cur.fetchone()
+            prime_contract_uuid = prime_contract_row[0] if prime_contract_row else None
+
+            sub_uuid = str(uuid.uuid4())
+            cur.execute(
+                """
+                INSERT INTO subcontracts (
+                    id, prime_contract_id, prime_vendor_id, subcontractor_vendor_id,
+                    subcontract_amount, subcontract_description, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """,
+                (
+                    sub_uuid, prime_contract_uuid, prime_vendor_id, sub_vendor_id,
+                    contract_data.get('Sub-Award Amount', 0),
+                    contract_data.get('Sub-Award Description')
+                )
+            )
+            return 1
+        except Exception as e:
+            logger.error(f"Failed to insert sub-award {sub_award_id}: {e}")
+            return 0
