@@ -6,6 +6,9 @@ module "api_gateway" {
   description = "GovGraph HTTP API Gateway"
   protocol_type = "HTTP"
 
+  create_domain_name = false
+  create_certificate = false
+
   cors_configuration = {
   allow_headers = ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token", "x-amz-user-agent"]
   allow_methods = ["*"]
