@@ -259,6 +259,16 @@ module "reprocess_lambda" {
           aws_dynamodb_table.entity_cache.arn,
           aws_secretsmanager_secret.sam_api_key.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+        ]
       }
     ]
   })
@@ -269,3 +279,88 @@ module "reprocess_lambda" {
   }
 }
 
+module "apply_schema_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-apply-schema"
+  description   = "Applies SQL schema to RDS"
+  handler       = "apply_schema.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 300
+
+  layers = [aws_lambda_layer_version.dependencies.arn]
+
+  source_path = "${path.module}/../src/db"
+
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  attach_network_policy  = true
+
+  environment_variables = {
+    DB_HOST       = module.db.db_instance_address
+    DB_NAME       = var.db_name
+    DB_USER       = var.db_username
+    DB_SECRET_ARN = module.db.db_instance_master_user_secret_arn
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [module.db.db_instance_master_user_secret_arn]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
+module "admin_reset_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-admin-reset"
+  description   = "DESTRUCTIVE: Resets database tables"
+  handler       = "admin_reset.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 300
+
+  layers = [aws_lambda_layer_version.dependencies.arn]
+
+  source_path = "${path.module}/../src/db"
+
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  attach_network_policy  = true
+
+  environment_variables = {
+    DB_HOST       = module.db.db_instance_address
+    DB_NAME       = var.db_name
+    DB_USER       = var.db_username
+    DB_SECRET_ARN = module.db.db_instance_master_user_secret_arn
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [module.db.db_instance_master_user_secret_arn]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
