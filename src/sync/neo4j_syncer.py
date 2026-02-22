@@ -2,8 +2,13 @@ import os
 import json
 import boto3
 import psycopg2
+import logging
 from neo4j import GraphDatabase
 from psycopg2.extras import RealDictCursor
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # Configuration
 DB_HOST = os.environ.get("DB_HOST")
@@ -41,7 +46,7 @@ def get_neo4j_driver():
 
 
 def sync_agencies(pg_conn, neo4j_session):
-    print("Syncing Agencies...")
+    logger.info("SYNC: Starting Agency synchronization...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Find unsynced or updated agencies
         cur.execute("""
@@ -54,6 +59,8 @@ def sync_agencies(pg_conn, neo4j_session):
         agencies = cur.fetchall()
 
         for agency in agencies:
+            # 1. Create/Update Agency Node
+            logger.info(f"SYNC: Processing Agency {agency['agency_name']} ({agency['agency_code']})")
             query = """
             MERGE (a:Agency {id: $id})
             SET a.agencyCode = $code,
@@ -69,13 +76,25 @@ def sync_agencies(pg_conn, neo4j_session):
                               dept=agency['department'],
                               type=agency['agency_type'])
 
+            # 2. Link to Parent Agency if applicable
+            if agency['parent_agency_id']:
+                logger.info(f"SYNC: Linking Agency {agency['agency_code']} to parent {agency['parent_agency_id']}")
+                query_parent = """
+                MATCH (child:Agency {id: $id})
+                MATCH (parent:Agency {id: $p_id})
+                MERGE (child)-[:SUBAGENCY_OF]->(parent)
+                """
+                neo4j_session.run(query_parent, 
+                                  id=str(agency['id']), 
+                                  p_id=str(agency['parent_agency_id']))
+
             # Update sync status
             mark_synced(pg_conn, 'agency', agency['id'])
-    print(f"Synced {len(agencies)} agencies.")
+    logger.info(f"SYNC: Successfully synced {len(agencies)} agencies.")
 
 
 def sync_vendors(pg_conn, neo4j_session):
-    print("Syncing High-Value Vendors (>$1M)...")
+    logger.info("SYNC: Starting Vendor synchronization (>$1M threshold)...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Calculate total value and sync vendors > $1M if new or updated
         cur.execute("""
@@ -91,6 +110,7 @@ def sync_vendors(pg_conn, neo4j_session):
         vendors = cur.fetchall()
 
         for vendor in vendors:
+            logger.info(f"SYNC: Processing high-value Vendor {vendor['canonical_name']} (${float(vendor['total_value']):,.2f})")
             query = """
             MERGE (v:Vendor {id: $id})
             SET v.canonicalName = $name,
@@ -111,11 +131,11 @@ def sync_vendors(pg_conn, neo4j_session):
                               total_value=float(vendor['total_value']))
 
             mark_synced(pg_conn, 'vendor', vendor['id'])
-    print(f"Synced {len(vendors)} high-value vendors.")
+    logger.info(f"SYNC: Successfully synced {len(vendors)} high-value vendors.")
 
 
 def sync_contracts(pg_conn, neo4j_session):
-    print("Syncing Contracts for High-Value Vendors...")
+    logger.info("SYNC: Starting Contract synchronization...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Sync contracts for synced vendors if they are new or updated
         cur.execute("""
@@ -131,6 +151,7 @@ def sync_contracts(pg_conn, neo4j_session):
         contracts = cur.fetchall()
 
         for contract in contracts:
+            logger.info(f"SYNC: Processing Contract {contract['contract_id']}")
             # Create/Update Contract Node
             query_node = """
             MERGE (c:Contract {id: $id})
@@ -152,6 +173,7 @@ def sync_contracts(pg_conn, neo4j_session):
 
             # Link to Vendor
             if contract['vendor_id']:
+                logger.info(f"SYNC: Linking Contract {contract['contract_id']} to Vendor {contract['vendor_id']}")
                 query_rel_vendor = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (v:Vendor {id: $v_id})
@@ -160,9 +182,8 @@ def sync_contracts(pg_conn, neo4j_session):
                 neo4j_session.run(query_rel_vendor, c_id=str(
                     contract['id']), v_id=str(contract['vendor_id']))
 
-            # Link to Agency
+            # 1. Link to Awarding Agency (Top Tier)
             if contract['agency_id']:
-                # Ensure agency exists in Neo4j (it should if sync_agencies ran first)
                 query_rel_agency = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (a:Agency {id: $a_id})
@@ -171,8 +192,96 @@ def sync_contracts(pg_conn, neo4j_session):
                 neo4j_session.run(query_rel_agency, c_id=str(
                     contract['id']), a_id=str(contract['agency_id']))
 
+            # 2. Link to Awarding Sub Agency
+            if contract['awarding_sub_agency_id']:
+                query_rel_sub = """
+                MATCH (c:Contract {id: $c_id})
+                MATCH (a:Agency {id: $a_id})
+                MERGE (a)-[:AWARDED_CONTRACT]->(c)
+                """
+                neo4j_session.run(query_rel_sub, c_id=str(
+                    contract['id']), a_id=str(contract['awarding_sub_agency_id']))
+
+            # 3. Link to Funding Agency
+            if contract['funding_agency_id']:
+                query_rel_fund = """
+                MATCH (c:Contract {id: $c_id})
+                MATCH (a:Agency {id: $a_id})
+                MERGE (a)-[:FUNDED]->(c)
+                """
+                neo4j_session.run(query_rel_fund, c_id=str(
+                    contract['id']), a_id=str(contract['funding_agency_id']))
+
+            # 4. Link to Funding Sub Agency
+            if contract['funding_sub_agency_id']:
+                query_rel_fund_sub = """
+                MATCH (c:Contract {id: $c_id})
+                MATCH (a:Agency {id: $a_id})
+                MERGE (a)-[:FUNDED]->(c)
+                """
+                neo4j_session.run(query_rel_fund_sub, c_id=str(
+                    contract['id']), a_id=str(contract['funding_sub_agency_id']))
+
             mark_synced(pg_conn, 'contract', contract['id'])
-    print(f"Synced {len(contracts)} contracts.")
+    logger.info(f"SYNC: Successfully synced {len(contracts)} contracts.")
+
+
+def sync_subcontracts(pg_conn, neo4j_session):
+    logger.info("SYNC: Starting Subcontract synchronization...")
+    with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Sync subcontracts if both vendors are in Neo4j (or at least the prime)
+        # For simplicity, we sync if the prime vendor is already synced
+        cur.execute("""
+            SELECT sc.* 
+            FROM subcontracts sc
+            JOIN neo4j_sync_status s_prime 
+                ON s_prime.entity_id = sc.prime_vendor_id AND s_prime.entity_type = 'vendor'
+            LEFT JOIN neo4j_sync_status s 
+                ON s.entity_type = 'subcontract' AND s.entity_id = sc.id
+            WHERE (s.id IS NULL OR s.sync_status != 'synced')
+              AND s_prime.sync_status = 'synced'
+        """)
+        subcontracts = cur.fetchall()
+
+        for sub in subcontracts:
+            # We need to make sure the subcontractor vendor also exists in Neo4j
+            # (Tier 2 vendors might not meet the $1M threshold, so we MERGE them here too)
+            # Fetch subcontractor details from RDS
+            cur.execute("SELECT * FROM vendors WHERE id = %s", (sub['subcontractor_vendor_id'],))
+            sub_vendor = cur.fetchone()
+            
+            if sub_vendor:
+                logger.info(f"SYNC: Processing Subcontractor {sub_vendor['canonical_name']} for Prime {sub['prime_vendor_id']}")
+                # Merge subcontractor node (might be low value, but essential for the graph)
+                query_vend = """
+                MERGE (v:Vendor {id: $id})
+                SET v.canonicalName = $name,
+                    v.uei = $uei,
+                    v.isSubcontractor = true
+                """
+                neo4j_session.run(query_vend, 
+                                  id=str(sub_vendor['id']), 
+                                  name=sub_vendor['canonical_name'],
+                                  uei=sub_vendor['uei'])
+
+                # Link Prime to Subcontractor
+                query_rel = """
+                MATCH (prime:Vendor {id: $p_id})
+                MATCH (sub:Vendor {id: $s_id})
+                MERGE (prime)-[r:SUBCONTRACTED]->(sub)
+                SET r.amount = $amount,
+                    r.description = $desc,
+                    r.tier = $tier
+                """
+                neo4j_session.run(query_rel,
+                                  p_id=str(sub['prime_vendor_id']),
+                                  s_id=str(sub['subcontractor_vendor_id']),
+                                  amount=float(sub['subcontract_amount']) if sub['subcontract_amount'] else 0.0,
+                                  desc=sub['subcontract_description'],
+                                  tier=sub['tier_level'])
+
+            mark_synced(pg_conn, 'subcontract', sub['id'])
+    logger.info(f"SYNC: Successfully synced {len(subcontracts)} subcontracts.")
 
 
 def mark_synced(pg_conn, entity_type, entity_id):
@@ -197,7 +306,7 @@ def lambda_handler(event, context):
     neo4j_driver = None
 
     try:
-        print("Starting Sync Process...")
+        logger.info("SYNC: Starting full synchronization process...")
         pg_conn = get_pg_connection()
         neo4j_driver = get_neo4j_driver()
 
@@ -205,14 +314,16 @@ def lambda_handler(event, context):
             sync_agencies(pg_conn, session)
             sync_vendors(pg_conn, session)
             sync_contracts(pg_conn, session)
+            sync_subcontracts(pg_conn, session)
 
+        logger.info("SYNC: Full synchronization completed successfully.")
         return {
             'statusCode': 200,
             'body': json.dumps('Sync Complete')
         }
 
     except Exception as e:
-        print(f"Sync Failed: {e}")
+        logger.error(f"SYNC: Process failed with error: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps(f'Sync Failed: {str(e)}')
