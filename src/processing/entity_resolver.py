@@ -162,7 +162,8 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
             # Quick verification that the vendor still exists in RDS
             vendor_id = item['vendor_id']
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id FROM vendors WHERE id = %s LIMIT 1", (vendor_id,))
+                cur.execute(
+                    "SELECT id FROM vendors WHERE id = %s LIMIT 1", (vendor_id,))
                 if cur.fetchone():
                     logger.info(f"RESOLVE: Cache Hit for {vendor_name}")
                     return vendor_id, item['canonical_name'], "CACHE_MATCH", float(item.get('confidence', 0.9))
@@ -233,7 +234,8 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
 
     # Tier 5: Fuzzy Matching
     canonical_names = refresh_canonical_names_cache(conn)
-    logger.info(f"RESOLVE: Fuzzy Tier - {len(canonical_names) if canonical_names else 0} names in cache")
+    logger.info(f"RESOLVE: Fuzzy Tier - {len(canonical_names)
+                if canonical_names else 0} names in cache")
     if canonical_names:
         match = process.extractOne(
             vendor_name, canonical_names, scorer=fuzz.WRatio)
@@ -522,11 +524,14 @@ def process_prime_award(contract_data, conn):
                     signed_date, contract_data.get('Contract Award Type')
                 )
             )
-            cur.execute("UPDATE raw_contracts SET processed = TRUE WHERE id = %s", (raw_contract_id,))
+            cur.execute(
+                "UPDATE raw_contracts SET processed = TRUE WHERE id = %s", (raw_contract_id,))
             return 1
         except Exception as e:
-            logger.error(f"Failed to insert prime contract {usaspending_id}: {e}")
-            cur.execute("UPDATE raw_contracts SET processing_errors = %s WHERE id = %s", (str(e), raw_contract_id))
+            logger.error(f"Failed to insert prime contract {
+                         usaspending_id}: {e}")
+            cur.execute("UPDATE raw_contracts SET processing_errors = %s WHERE id = %s", (str(
+                e), raw_contract_id))
             return 0
 
 
@@ -542,10 +547,12 @@ def process_sub_award(contract_data, conn):
         return 0
 
     # 1. Resolve Sub-contractor Vendor
-    sub_vendor_id, _, _, _ = resolve_vendor(sub_vendor_name, uei=sub_uei, conn=conn)
+    sub_vendor_id, _, _, _ = resolve_vendor(
+        sub_vendor_name, uei=sub_uei, conn=conn)
 
     # 2. Resolve Prime Vendor
-    prime_vendor_id, _, _, _ = resolve_vendor(contract_data.get('Prime Recipient Name'), uei=prime_uei, conn=conn)
+    prime_vendor_id, _, _, _ = resolve_vendor(contract_data.get(
+        'Prime Recipient Name'), uei=prime_uei, conn=conn)
 
     # 3. Resolve Agency (limited for sub-awards in USAspending API)
     agency_id = resolve_agency(
@@ -558,7 +565,8 @@ def process_sub_award(contract_data, conn):
     with conn.cursor() as cur:
         try:
             # First find the prime contract record in our DB if it exists
-            cur.execute("SELECT id FROM contracts WHERE contract_id = %s LIMIT 1", (prime_id,))
+            cur.execute(
+                "SELECT id FROM contracts WHERE contract_id = %s LIMIT 1", (prime_id,))
             prime_contract_row = cur.fetchone()
             prime_contract_uuid = prime_contract_row[0] if prime_contract_row else None
 
