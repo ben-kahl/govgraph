@@ -10,3 +10,4 @@ __pycache__/
 venv/
 *.zip
 results.txt
+infra/scripts/reset_databases.py
