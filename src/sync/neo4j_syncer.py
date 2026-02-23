@@ -60,7 +60,8 @@ def sync_agencies(pg_conn, neo4j_session):
 
         for agency in agencies:
             # 1. Create/Update Agency Node
-            logger.info(f"SYNC: Processing Agency {agency['agency_name']} ({agency['agency_code']})")
+            logger.info(f"SYNC: Processing Agency {
+                        agency['agency_name']} ({agency['agency_code']})")
             query = """
             MERGE (a:Agency {id: $id})
             SET a.agencyCode = $code,
@@ -78,14 +79,15 @@ def sync_agencies(pg_conn, neo4j_session):
 
             # 2. Link to Parent Agency if applicable
             if agency['parent_agency_id']:
-                logger.info(f"SYNC: Linking Agency {agency['agency_code']} to parent {agency['parent_agency_id']}")
+                logger.info(f"SYNC: Linking Agency {agency['agency_code']} to parent {
+                            agency['parent_agency_id']}")
                 query_parent = """
                 MATCH (child:Agency {id: $id})
                 MATCH (parent:Agency {id: $p_id})
                 MERGE (child)-[:SUBAGENCY_OF]->(parent)
                 """
-                neo4j_session.run(query_parent, 
-                                  id=str(agency['id']), 
+                neo4j_session.run(query_parent,
+                                  id=str(agency['id']),
                                   p_id=str(agency['parent_agency_id']))
 
             # Update sync status
@@ -110,7 +112,8 @@ def sync_vendors(pg_conn, neo4j_session):
         vendors = cur.fetchall()
 
         for vendor in vendors:
-            logger.info(f"SYNC: Processing high-value Vendor {vendor['canonical_name']} (${float(vendor['total_value']):,.2f})")
+            logger.info(f"SYNC: Processing high-value Vendor {
+                        vendor['canonical_name']} (${float(vendor['total_value']):,.2f})")
             query = """
             MERGE (v:Vendor {id: $id})
             SET v.canonicalName = $name,
@@ -131,7 +134,8 @@ def sync_vendors(pg_conn, neo4j_session):
                               total_value=float(vendor['total_value']))
 
             mark_synced(pg_conn, 'vendor', vendor['id'])
-    logger.info(f"SYNC: Successfully synced {len(vendors)} high-value vendors.")
+    logger.info(f"SYNC: Successfully synced {
+                len(vendors)} high-value vendors.")
 
 
 def sync_contracts(pg_conn, neo4j_session):
@@ -173,7 +177,8 @@ def sync_contracts(pg_conn, neo4j_session):
 
             # Link to Vendor
             if contract['vendor_id']:
-                logger.info(f"SYNC: Linking Contract {contract['contract_id']} to Vendor {contract['vendor_id']}")
+                logger.info(f"SYNC: Linking Contract {
+                            contract['contract_id']} to Vendor {contract['vendor_id']}")
                 query_rel_vendor = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (v:Vendor {id: $v_id})
@@ -247,11 +252,13 @@ def sync_subcontracts(pg_conn, neo4j_session):
             # We need to make sure the subcontractor vendor also exists in Neo4j
             # (Tier 2 vendors might not meet the $1M threshold, so we MERGE them here too)
             # Fetch subcontractor details from RDS
-            cur.execute("SELECT * FROM vendors WHERE id = %s", (sub['subcontractor_vendor_id'],))
+            cur.execute("SELECT * FROM vendors WHERE id = %s",
+                        (sub['subcontractor_vendor_id'],))
             sub_vendor = cur.fetchone()
-            
+
             if sub_vendor:
-                logger.info(f"SYNC: Processing Subcontractor {sub_vendor['canonical_name']} for Prime {sub['prime_vendor_id']}")
+                logger.info(f"SYNC: Processing Subcontractor {
+                            sub_vendor['canonical_name']} for Prime {sub['prime_vendor_id']}")
                 # Merge subcontractor node (might be low value, but essential for the graph)
                 query_vend = """
                 MERGE (v:Vendor {id: $id})
@@ -259,8 +266,8 @@ def sync_subcontracts(pg_conn, neo4j_session):
                     v.uei = $uei,
                     v.isSubcontractor = true
                 """
-                neo4j_session.run(query_vend, 
-                                  id=str(sub_vendor['id']), 
+                neo4j_session.run(query_vend,
+                                  id=str(sub_vendor['id']),
                                   name=sub_vendor['canonical_name'],
                                   uei=sub_vendor['uei'])
 
@@ -276,7 +283,8 @@ def sync_subcontracts(pg_conn, neo4j_session):
                 neo4j_session.run(query_rel,
                                   p_id=str(sub['prime_vendor_id']),
                                   s_id=str(sub['subcontractor_vendor_id']),
-                                  amount=float(sub['subcontract_amount']) if sub['subcontract_amount'] else 0.0,
+                                  amount=float(
+                                      sub['subcontract_amount']) if sub['subcontract_amount'] else 0.0,
                                   desc=sub['subcontract_description'],
                                   tier=sub['tier_level'])
 
