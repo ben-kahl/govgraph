@@ -143,7 +143,7 @@ def test_resolve_vendor_fuzzy_match(mocker, mock_conn):
                  return_value=MagicMock(**{'get_item.return_value': {}}))
     mocker.patch('src.processing.entity_resolver.get_sam_entity', return_value=None)
     mocker.patch('src.processing.entity_resolver.refresh_canonical_names_cache',
-                 return_value=['TARGET CORP'])
+                 return_value=(['TARGET CORP'], {'TARGET': 'TARGET CORP'}))
     # Mock LLM fallback just in case it falls through
     mocker.patch('src.processing.entity_resolver.call_bedrock_standardization_with_retry', 
                  return_value='LLM FALLBACK')

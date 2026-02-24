@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import boto3
@@ -14,6 +15,15 @@ from psycopg2.extras import RealDictCursor
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+def normalize_vendor_name(name):
+    """Strips punctuation and common suffixes to create a highly matchable string."""
+    if not name:
+        return ""
+    name = name.upper()
+    name = re.sub(r"[.,\/#!$%\^&\*;:{}=\-_~()]", " ", name)
+    name = re.sub(r"\b(CORP|CORPORATION|INC|INCORPORATED|LLC|LTD|LIMITED|CO|COMPANY|PLC)\b", "", name)
+    return " ".join(name.split())
 
 # Configuration
 DB_HOST = os.environ.get("DB_HOST")
@@ -58,6 +68,7 @@ def get_cache_table():
 
 # In-memory cache for fuzzy matching (persists across warm Lambda invocations)
 CANONICAL_NAMES_CACHE = None
+NORMALIZED_NAMES_CACHE = None
 CACHE_EXPIRY = None
 
 # -----------------------------------------------------------------------------
@@ -84,19 +95,26 @@ def get_db_connection():
 
 def refresh_canonical_names_cache(conn):
     """Fetches all canonical names from the database for fuzzy matching."""
-    global CANONICAL_NAMES_CACHE, CACHE_EXPIRY
+    global CANONICAL_NAMES_CACHE, NORMALIZED_NAMES_CACHE, CACHE_EXPIRY
 
     # Refresh cache every 15 minutes
     if CANONICAL_NAMES_CACHE is not None and CACHE_EXPIRY > datetime.now():
-        return CANONICAL_NAMES_CACHE
+        return CANONICAL_NAMES_CACHE, NORMALIZED_NAMES_CACHE
 
     logger.info("Refreshing canonical names cache...")
     with conn.cursor() as cur:
         cur.execute("SELECT canonical_name FROM vendors")
         CANONICAL_NAMES_CACHE = [row[0] for row in cur.fetchall()]
+        
+        NORMALIZED_NAMES_CACHE = {}
+        for name in CANONICAL_NAMES_CACHE:
+            norm_name = normalize_vendor_name(name)
+            if norm_name and norm_name not in NORMALIZED_NAMES_CACHE:
+                NORMALIZED_NAMES_CACHE[norm_name] = name
+
         CACHE_EXPIRY = datetime.now() + timedelta(minutes=15)
 
-    return CANONICAL_NAMES_CACHE
+    return CANONICAL_NAMES_CACHE, NORMALIZED_NAMES_CACHE
 
 # -----------------------------------------------------------------------------
 # Entity Resolution Logic (4-Tier)
@@ -232,10 +250,24 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
                 logger.info(f"RESOLVE: SAM Match (New) for {vendor_name}")
                 return vendor_id, canonical_name, "SAM_API_MATCH", 1.0
 
+    # Tier 4.5: Normalized Exact Match
+    canonical_names, normalized_names_cache = refresh_canonical_names_cache(conn)
+    
+    normalized_incoming = normalize_vendor_name(vendor_name)
+    if normalized_incoming and normalized_incoming in normalized_names_cache:
+        matched_name = normalized_names_cache[normalized_incoming]
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id FROM vendors WHERE canonical_name = %s LIMIT 1",
+                (matched_name,)
+            )
+            res = cur.fetchone()
+            if res:
+                logger.info(f"RESOLVE: Normalized Exact Match for {vendor_name} -> {matched_name}")
+                return res['id'], matched_name, "NORMALIZED_EXACT_MATCH", 1.0
+
     # Tier 5: Fuzzy Matching
-    canonical_names = refresh_canonical_names_cache(conn)
-    logger.info(f"RESOLVE: Fuzzy Tier - {len(canonical_names)
-                if canonical_names else 0} names in cache")
+    logger.info(f"RESOLVE: Fuzzy Tier - {len(canonical_names) if canonical_names else 0} names in cache")
     if canonical_names:
         match = process.extractOne(
             vendor_name, canonical_names, scorer=fuzz.WRatio)
