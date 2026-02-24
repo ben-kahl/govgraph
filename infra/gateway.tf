@@ -19,7 +19,7 @@ module "api_gateway" {
 }
 
 resource "aws_apigatewayv2_integration" "api_lambda" {
-  api_id                 = module.api_gateway.apigatewayv2_api_id
+  api_id                 = module.api_gateway.api_id
   integration_type       = "AWS_PROXY"
   integration_uri        = module.api_lambda.lambda_function_arn
   payload_format_version = "2.0"
@@ -27,7 +27,7 @@ resource "aws_apigatewayv2_integration" "api_lambda" {
 }
 
 resource "aws_apigatewayv2_route" "default" {
-  api_id    = module.api_gateway.apigatewayv2_api_id
+  api_id    = module.api_gateway.api_id
   route_key = "$default"
   target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
 }
@@ -37,5 +37,5 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
   action        = "lambda:InvokeFunction"
   function_name = module.api_lambda.lambda_function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${module.api_gateway.apigatewayv2_api_execution_arn}/*"
+  source_arn    = "${module.api_gateway.api_execution_arn}/*"
 }
