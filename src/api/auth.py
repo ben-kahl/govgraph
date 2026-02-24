@@ -24,9 +24,11 @@ def _get_jwks() -> Dict:
         return _jwks_cache
 
     if not COGNITO_USER_POOL_ID:
-        raise HTTPException(status_code=503, detail="Auth not configured: COGNITO_USER_POOL_ID missing")
+        raise HTTPException(
+            status_code=503, detail="Auth not configured: COGNITO_USER_POOL_ID missing")
 
-    url = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+    url = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{
+        COGNITO_USER_POOL_ID}/.well-known/jwks.json"
     try:
         response = httpx.get(url, timeout=5)
         response.raise_for_status()
@@ -34,7 +36,8 @@ def _get_jwks() -> Dict:
         return _jwks_cache
     except Exception as e:
         logger.error("Failed to fetch Cognito JWKS: %s", e)
-        raise HTTPException(status_code=503, detail="Unable to fetch auth keys")
+        raise HTTPException(
+            status_code=503, detail="Unable to fetch auth keys")
 
 
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
@@ -51,9 +54,11 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
 
     key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if key is None:
-        raise HTTPException(status_code=401, detail="Token signing key not found")
+        raise HTTPException(
+            status_code=401, detail="Token signing key not found")
 
-    pool_url = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
+    pool_url = f"https://cognito-idp.{
+        COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
     try:
         claims = jwt.decode(
             token,
@@ -64,11 +69,13 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except JWTError as e:
-        raise HTTPException(status_code=401, detail=f"Token validation failed: {e}")
+        raise HTTPException(
+            status_code=401, detail=f"Token validation failed: {e}")
 
     if claims.get("iss") != pool_url:
         raise HTTPException(status_code=401, detail="Token issuer mismatch")
     if claims.get("token_use") != "access":
-        raise HTTPException(status_code=401, detail="Token must be an access token")
+        raise HTTPException(
+            status_code=401, detail="Token must be an access token")
 
     return claims
