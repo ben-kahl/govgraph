@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any, Dict
 import time
 from psycopg2.extras import RealDictCursor
 
@@ -14,7 +15,7 @@ from entity_resolver import (
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Reprocesses all archived contracts from raw_contracts table.
     Useful for schema changes or backfilling missing fields.

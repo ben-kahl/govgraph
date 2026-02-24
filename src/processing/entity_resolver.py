@@ -11,13 +11,15 @@ from datetime import datetime, date, timedelta
 from rapidfuzz import process, fuzz
 import requests
 from psycopg2.extras import RealDictCursor
+from typing import Any, Dict, List, Optional, Tuple
+import psycopg2.extensions
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def normalize_vendor_name(name):
+def normalize_vendor_name(name: Optional[str]) -> str:
     """Strips punctuation and common suffixes to create a highly matchable string."""
     if not name:
         return ""
@@ -46,22 +48,25 @@ lambda_client = None
 dynamodb = None
 cache_table = None
 
+# Module-level secrets cache (persists across warm Lambda invocations)
+_secrets_cache: Dict[str, Dict[str, Any]] = {}
 
-def get_bedrock_client():
+
+def get_bedrock_client() -> Any:
     global bedrock
     if bedrock is None:
         bedrock = boto3.client(service_name="bedrock-runtime")
     return bedrock
 
 
-def get_lambda_client():
+def get_lambda_client() -> Any:
     global lambda_client
     if lambda_client is None:
         lambda_client = boto3.client(service_name="lambda")
     return lambda_client
 
 
-def get_cache_table():
+def get_cache_table() -> Any:
     global dynamodb, cache_table
     if cache_table is None:
         dynamodb = boto3.resource("dynamodb")
@@ -79,13 +84,16 @@ CACHE_EXPIRY = None
 # -----------------------------------------------------------------------------
 
 
-def get_secret(secret_arn):
+def get_secret(secret_arn: str) -> Dict[str, Any]:
+    if secret_arn in _secrets_cache:
+        return _secrets_cache[secret_arn]
     client = boto3.client('secretsmanager')
     response = client.get_secret_value(SecretId=secret_arn)
-    return json.loads(response['SecretString'])
+    _secrets_cache[secret_arn] = json.loads(response['SecretString'])
+    return _secrets_cache[secret_arn]
 
 
-def get_db_connection():
+def get_db_connection() -> psycopg2.extensions.connection:
     db_creds = get_secret(DB_SECRET_ARN)
     return psycopg2.connect(
         host=DB_HOST,
@@ -96,7 +104,7 @@ def get_db_connection():
     )
 
 
-def refresh_canonical_names_cache(conn):
+def refresh_canonical_names_cache(conn: psycopg2.extensions.connection) -> Tuple[Optional[List[str]], Optional[Dict[str, str]]]:
     """Fetches all canonical names from the database for fuzzy matching."""
     global CANONICAL_NAMES_CACHE, NORMALIZED_NAMES_CACHE, CACHE_EXPIRY
 
@@ -124,7 +132,7 @@ def refresh_canonical_names_cache(conn):
 # -----------------------------------------------------------------------------
 
 
-def get_sam_entity(uei=None, vendor_name=None):
+def get_sam_entity(uei: Optional[str] = None, vendor_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Fetches entity data directly from SAM.gov API.
     """
@@ -163,7 +171,7 @@ def get_sam_entity(uei=None, vendor_name=None):
     return None
 
 
-def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
+def resolve_vendor(vendor_name: Optional[str], duns: Optional[str] = None, uei: Optional[str] = None, conn: Optional[psycopg2.extensions.connection] = None) -> Tuple[Optional[str], Optional[str], str, float]:
     """
     6-Tier Resolution Strategy:
     1. DynamoDB cache lookup (Fast-path for previously resolved messy names)
@@ -349,7 +357,7 @@ def resolve_vendor(vendor_name, duns=None, uei=None, conn=None):
     return vendor_id, canonical_name, "LLM_RESOLUTION", 0.95
 
 
-def update_cache(vendor_name, canonical_name, vendor_id, confidence):
+def update_cache(vendor_name: str, canonical_name: str, vendor_id: str, confidence: float) -> None:
     """Updates the DynamoDB entity resolution cache."""
     try:
         get_cache_table().put_item(Item={
@@ -363,7 +371,7 @@ def update_cache(vendor_name, canonical_name, vendor_id, confidence):
         logger.warning(f"Failed to update DynamoDB cache: {e}")
 
 
-def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
+def call_bedrock_standardization_with_retry(messy_name: str, max_retries: int = 3) -> str:
     """Calls Bedrock with exponential backoff to handle throttling."""
     prompt = f"""
     Standardize this company name to its canonical legal form.
@@ -401,7 +409,7 @@ def call_bedrock_standardization_with_retry(messy_name, max_retries=3):
 # -----------------------------------------------------------------------------
 
 
-def resolve_agency(agency_name, agency_code, parent_agency_id=None, conn=None):
+def resolve_agency(agency_name: Optional[str], agency_code: Optional[str], parent_agency_id: Optional[str] = None, conn: Optional[psycopg2.extensions.connection] = None) -> Optional[str]:
     """
     Resolves an agency by code, creating it if it doesn't exist.
     Supports parent/child relationships.
@@ -436,7 +444,7 @@ def resolve_agency(agency_name, agency_code, parent_agency_id=None, conn=None):
         return res['id'] if res else agency_id
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Processing batch of {len(event['Records'])} messages")
 
     conn = get_db_connection()
@@ -463,7 +471,7 @@ def lambda_handler(event, context):
         conn.close()
 
 
-def process_prime_award(contract_data, conn):
+def process_prime_award(contract_data: Dict[str, Any], conn: psycopg2.extensions.connection) -> int:
     """Processes a prime award record."""
     usaspending_id = contract_data.get('Award ID')
     vendor_name = contract_data.get('Recipient Name')
@@ -573,7 +581,7 @@ def process_prime_award(contract_data, conn):
             return 0
 
 
-def process_sub_award(contract_data, conn):
+def process_sub_award(contract_data: Dict[str, Any], conn: psycopg2.extensions.connection) -> int:
     """Processes a sub-award record and links it to prime awards."""
     sub_award_id = contract_data.get('Sub-Award ID')
     prime_id = contract_data.get('Prime Award ID')

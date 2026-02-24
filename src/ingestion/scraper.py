@@ -7,6 +7,7 @@ from urllib3.util.retry import Retry
 import json
 import boto3
 import logging
+from typing import Any, Dict, List, Optional
 
 # Configure logging
 logger = logging.getLogger()
@@ -24,7 +25,7 @@ s3_client = boto3.client('s3')
 sqs_client = boto3.client('sqs')
 
 
-def get_session():
+def get_session() -> requests.Session:
     """Configures a requests Session with robust retries and connection pooling."""
     session = requests.Session()
     # Retry on 429 Too Many Requests, 500, 502, 503, 504
@@ -34,6 +35,8 @@ def get_session():
         connect=5,
         backoff_factor=1,
         status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=None,  # urllib3 default excludes POST; None retries all methods
+        respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(
         max_retries=retry, pool_connections=10, pool_maxsize=10)
@@ -42,7 +45,7 @@ def get_session():
     return session
 
 
-def fetch_contracts(start_date, end_date, spending_level="awards", award_type_codes=None):
+def fetch_contracts(start_date: str, end_date: str, spending_level: str = "awards", award_type_codes: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
     Fetches contracts from USAspending API for a given date range and spending level.
 
@@ -130,7 +133,7 @@ def fetch_contracts(start_date, end_date, spending_level="awards", award_type_co
     return all_results
 
 
-def archive_to_s3(contracts, date_str):
+def archive_to_s3(contracts: List[Dict[str, Any]], date_str: str) -> str:
     """Archives raw contract data to S3."""
     file_key = f"{date_str}/contracts.json"
     logger.info(f"Archiving {len(contracts)
@@ -145,7 +148,7 @@ def archive_to_s3(contracts, date_str):
     return file_key
 
 
-def send_to_queue(contracts, data_type="prime"):
+def send_to_queue(contracts: List[Dict[str, Any]], data_type: str = "prime") -> None:
     """Sends individual contracts to SQS in batches."""
     logger.info(f"Sending {len(contracts)} {
                 data_type} messages to SQS queue...")
@@ -176,7 +179,7 @@ def send_to_queue(contracts, data_type="prime"):
                                len(response['Failed'])} messages")
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main Lambda Entry Point."""
     # Get configuration from event
     days_back = event.get('days', 3)  # Default to 3 days to handle lag
@@ -232,7 +235,7 @@ def lambda_handler(event, context):
     }
 
 
-def test_handler():
+def test_handler() -> Dict[str, Any]:
     """Local test run handler"""
     today = datetime.date.today()
     start_date = (today - datetime.timedelta(days=3)).strftime("%Y-%m-%d")

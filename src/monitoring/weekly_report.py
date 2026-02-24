@@ -3,6 +3,7 @@ import time
 import datetime
 import boto3
 import logging
+from typing import Any, Dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -23,7 +24,7 @@ filter @message like /RESOLVE:/
 | sort tier_count desc
 """
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info("Starting Weekly Resolution Analytics Report...")
     
     end_time = datetime.datetime.now()
@@ -102,7 +103,7 @@ def lambda_handler(event, context):
         logger.error(f"Error generating report: {str(e)}")
         return {'statusCode': 500, 'body': str(e)}
 
-def send_sns_email(message):
+def send_sns_email(message: str) -> None:
     if not SNS_TOPIC_ARN:
         logger.warning("No SNS_TOPIC_ARN configured. Skipping email.")
         return

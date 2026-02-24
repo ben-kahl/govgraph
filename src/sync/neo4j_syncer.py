@@ -3,8 +3,10 @@ import json
 import boto3
 import psycopg2
 import logging
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, Driver
 from psycopg2.extras import RealDictCursor
+from typing import Any, Dict, Optional
+import psycopg2.extensions
 
 # Configure logging
 logger = logging.getLogger()
@@ -17,15 +19,21 @@ DB_USER = os.environ.get("DB_USER")
 DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN")
 NEO4J_SECRET_ARN = os.environ.get("NEO4J_SECRET_ARN")
 
+# Module-level secrets cache (persists across warm Lambda invocations)
+_secrets_cache: Dict[str, Dict[str, Any]] = {}
 
-def get_secret(secret_arn):
+
+def get_secret(secret_arn: str) -> Dict[str, Any]:
     """Retrieve secret from AWS Secrets Manager."""
+    if secret_arn in _secrets_cache:
+        return _secrets_cache[secret_arn]
     client = boto3.client('secretsmanager')
     response = client.get_secret_value(SecretId=secret_arn)
-    return json.loads(response['SecretString'])
+    _secrets_cache[secret_arn] = json.loads(response['SecretString'])
+    return _secrets_cache[secret_arn]
 
 
-def get_pg_connection():
+def get_pg_connection() -> psycopg2.extensions.connection:
     """Connect to PostgreSQL using credentials from Secrets Manager."""
     db_creds = get_secret(DB_SECRET_ARN)
     return psycopg2.connect(
@@ -36,7 +44,7 @@ def get_pg_connection():
     )
 
 
-def get_neo4j_driver():
+def get_neo4j_driver() -> Driver:
     """Connect to Neo4j using credentials from Secrets Manager."""
     neo4j_creds = get_secret(NEO4J_SECRET_ARN)
     uri = neo4j_creds['NEO4J_URI']
@@ -45,7 +53,7 @@ def get_neo4j_driver():
     return GraphDatabase.driver(uri, auth=(user, password))
 
 
-def sync_agencies(pg_conn, neo4j_session):
+def sync_agencies(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) -> None:
     logger.info("SYNC: Starting Agency synchronization...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Find unsynced or updated agencies
@@ -95,7 +103,7 @@ def sync_agencies(pg_conn, neo4j_session):
     logger.info(f"SYNC: Successfully synced {len(agencies)} agencies.")
 
 
-def sync_vendors(pg_conn, neo4j_session):
+def sync_vendors(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) -> None:
     logger.info("SYNC: Starting Vendor synchronization (>$1M threshold)...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Calculate total value and sync vendors > $1M if new or updated
@@ -138,7 +146,7 @@ def sync_vendors(pg_conn, neo4j_session):
                 len(vendors)} high-value vendors.")
 
 
-def sync_contracts(pg_conn, neo4j_session):
+def sync_contracts(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) -> None:
     logger.info("SYNC: Starting Contract synchronization...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Sync contracts for synced vendors if they are new or updated
@@ -213,7 +221,7 @@ def sync_contracts(pg_conn, neo4j_session):
     logger.info(f"SYNC: Successfully synced {len(contracts)} contracts.")
 
 
-def sync_subcontracts(pg_conn, neo4j_session):
+def sync_subcontracts(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) -> None:
     logger.info("SYNC: Starting Subcontract synchronization...")
     with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Sync subcontracts if both vendors are in Neo4j (or at least the prime)
@@ -274,7 +282,7 @@ def sync_subcontracts(pg_conn, neo4j_session):
     logger.info(f"SYNC: Successfully synced {len(subcontracts)} subcontracts.")
 
 
-def mark_synced(pg_conn, entity_type, entity_id):
+def mark_synced(pg_conn: psycopg2.extensions.connection, entity_type: str, entity_id: str) -> None:
     with pg_conn.cursor() as cur:
         try:
             cur.execute("""
@@ -290,7 +298,7 @@ def mark_synced(pg_conn, entity_type, entity_id):
             pg_conn.rollback()
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """AWS Lambda Entry Point"""
     pg_conn = None
     neo4j_driver = None
