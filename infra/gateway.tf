@@ -16,15 +16,20 @@ module "api_gateway" {
     expose_headers = []
     max_age        = 300
   }
+}
 
-  integrations = {
-    "$default" = {
-      lambda_arn             = module.api_lambda.lambda_function_arn
-      integration_type       = "AWS_PROXY"
-      payload_format_version = "2.0"
-      timeout_milliseconds   = 30000
-    }
-  }
+resource "aws_apigatewayv2_integration" "api_lambda" {
+  api_id                 = module.api_gateway.apigatewayv2_api_id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = module.api_lambda.lambda_function_arn
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = module.api_gateway.apigatewayv2_api_id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
 }
 
 resource "aws_lambda_permission" "api_gateway_invoke" {
