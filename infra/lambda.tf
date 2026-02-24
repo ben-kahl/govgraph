@@ -155,7 +155,7 @@ module "processing_lambda" {
       event_source_arn = module.sqs.queue_arn
       batch_size       = 10
       scaling_config = {
-        maximum_concurrency = 2
+        maximum_concurrency = 10
       }
     }
   }

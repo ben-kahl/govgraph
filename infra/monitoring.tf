@@ -110,3 +110,85 @@ resource "aws_budgets_budget" "cost_control" {
     subscriber_email_addresses = [var.admin_email]
   }
 }
+
+# -----------------------------------------------------------------------------
+# Weekly Resolution Analytics Report (EventBridge + Lambda + SNS)
+# -----------------------------------------------------------------------------
+resource "aws_sns_topic" "weekly_report" {
+  name = "gov-graph-weekly-report"
+}
+
+resource "aws_sns_topic_subscription" "weekly_report_email" {
+  topic_arn = aws_sns_topic.weekly_report.arn
+  protocol  = "email"
+  endpoint  = var.admin_email
+}
+
+module "weekly_report_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-weekly-report"
+  description   = "Generates and emails weekly entity resolution analytics"
+  handler       = "weekly_report.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 60
+
+  source_path = "${path.module}/../src/monitoring"
+
+  environment_variables = {
+    SNS_TOPIC_ARN  = aws_sns_topic.weekly_report.arn
+    LOG_GROUP_NAME = "/aws/lambda/${module.processing_lambda.lambda_function_name}"
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sns:Publish"
+        ]
+        Resource = [aws_sns_topic.weekly_report.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:StartQuery",
+          "logs:GetQueryResults",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = [
+          "arn:aws:logs:*:*:log-group:/aws/lambda/${module.processing_lambda.lambda_function_name}:*",
+          "arn:aws:logs:*:*:log-group:/aws/lambda/${module.processing_lambda.lambda_function_name}"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "weekly_report_schedule" {
+  name                = "gov-graph-weekly-report"
+  description         = "Triggers weekly report Lambda on Monday at 12pm UTC"
+  schedule_expression = "cron(0 12 ? * MON *)"
+}
+
+resource "aws_cloudwatch_event_target" "weekly_report_target" {
+  rule      = aws_cloudwatch_event_rule.weekly_report_schedule.name
+  target_id = "WeeklyReportLambda"
+  arn       = module.weekly_report_lambda.lambda_function_arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_weekly_report" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = module.weekly_report_lambda.lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.weekly_report_schedule.arn
+}
