@@ -279,6 +279,63 @@ module "reprocess_lambda" {
   }
 }
 
+module "api_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "gov-graph-api"
+  description   = "FastAPI + Mangum serving the GovGraph HTTP API"
+  handler       = "api.handler"
+  runtime       = "python3.12"
+  timeout       = 30
+
+  layers = [aws_lambda_layer_version.dependencies.arn]
+
+  source_path = [
+    {
+      path             = "${path.module}/../src/api"
+      pip_requirements = true
+    }
+  ]
+
+  ignore_source_code_hash = true
+
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  attach_network_policy  = true
+
+  environment_variables = {
+    DB_HOST              = module.db.db_instance_address
+    DB_NAME              = var.db_name
+    DB_USER              = var.db_username
+    DB_SECRET_ARN        = module.db.db_instance_master_user_secret_arn
+    NEO4J_SECRET_ARN     = aws_secretsmanager_secret.neo4j_credentials.arn
+    COGNITO_USER_POOL_ID = aws_cognito_user_pool.main.id
+    COGNITO_REGION       = "us-east-1"
+    ALLOWED_ORIGINS      = "http://localhost:3000"
+  }
+
+  attach_policy_json = true
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          module.db.db_instance_master_user_secret_arn,
+          aws_secretsmanager_secret.neo4j_credentials.arn,
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
 module "apply_schema_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 8.0"

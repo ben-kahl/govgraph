@@ -1,0 +1,6 @@
+fastapi
+mangum
+pydantic
+slowapi
+python-jose[cryptography]
+httpx

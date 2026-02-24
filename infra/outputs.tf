@@ -12,3 +12,18 @@ output "sqs_queue_arn" {
   description = "SQS queue ARN"
   value       = module.sqs.queue_arn
 }
+
+output "api_gateway_url" {
+  description = "HTTP API Gateway invoke URL"
+  value       = module.api_gateway.apigatewayv2_api_api_endpoint
+}
+
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "cognito_client_id" {
+  description = "Cognito frontend app client ID"
+  value       = aws_cognito_user_pool_client.frontend.id
+}

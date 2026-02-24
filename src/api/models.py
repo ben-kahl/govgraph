@@ -98,6 +98,82 @@ class GraphResponse(BaseModel):
     nodes: List[GraphNode]
     edges: List[GraphEdge]
 
-class CypherQuery(BaseModel):
-    query: str
-    params: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+# --- Analytics Response Models ---
+class MarketShareEntry(BaseModel):
+    canonical_name: str
+    award_count: int
+    total_obligated: float
+    market_share_pct: float
+
+
+class SpendingTimeSeries(BaseModel):
+    period: datetime
+    contract_count: int
+    total_obligated: float
+
+
+class AwardTypeBreakdown(BaseModel):
+    award_type: Optional[str]
+    count: int
+    total_value: float
+
+
+class ConcentrationMetric(BaseModel):
+    agency_name: str
+    hhi: float
+
+
+class VelocityEntry(BaseModel):
+    quarter: datetime
+    awards: int
+    total: float
+    avg_award_size: float
+
+
+class SubcontractFlow(BaseModel):
+    prime_vendor: str
+    prime_value: float
+    sub_value: Optional[float]
+    subcontract_pct: Optional[float]
+
+
+class ResolutionQualityEntry(BaseModel):
+    resolution_method: Optional[str]
+    contract_count: int
+    avg_confidence_pct: Optional[float]
+    share_pct: float
+
+
+class AnomalyEntry(BaseModel):
+    canonical_name: str
+    contract_id: str
+    obligated_amount: float
+    avg_amount: float
+    z_score: float
+
+
+class NewEntrant(BaseModel):
+    canonical_name: str
+    first_award: date
+    award_count: int
+    total_value: float
+
+
+class HubVendor(BaseModel):
+    canonical_name: str
+    sub_count: int
+    total_passed_down: float
+    passthrough_pct: Optional[float]
+
+
+class SoleSourceFlag(BaseModel):
+    agency_name: str
+    sole_vendor: str
+    contracts: int
+    total_spend: float
+
+
+class CircularChain(BaseModel):
+    loop_members: List[str]
+    loop_length: int
