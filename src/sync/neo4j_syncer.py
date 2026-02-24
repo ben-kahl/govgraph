@@ -187,45 +187,27 @@ def sync_contracts(pg_conn, neo4j_session):
                 neo4j_session.run(query_rel_vendor, c_id=str(
                     contract['id']), v_id=str(contract['vendor_id']))
 
-            # 1. Link to Awarding Agency (Top Tier)
-            if contract['agency_id']:
+            # 1. Link to Awarding Agency (Prefer Sub Agency if available)
+            awarding_agency_id = contract['awarding_sub_agency_id'] or contract['agency_id']
+            if awarding_agency_id:
                 query_rel_agency = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (a:Agency {id: $a_id})
                 MERGE (a)-[:AWARDED_CONTRACT]->(c)
                 """
                 neo4j_session.run(query_rel_agency, c_id=str(
-                    contract['id']), a_id=str(contract['agency_id']))
+                    contract['id']), a_id=str(awarding_agency_id))
 
-            # 2. Link to Awarding Sub Agency
-            if contract['awarding_sub_agency_id']:
-                query_rel_sub = """
-                MATCH (c:Contract {id: $c_id})
-                MATCH (a:Agency {id: $a_id})
-                MERGE (a)-[:AWARDED_CONTRACT]->(c)
-                """
-                neo4j_session.run(query_rel_sub, c_id=str(
-                    contract['id']), a_id=str(contract['awarding_sub_agency_id']))
-
-            # 3. Link to Funding Agency
-            if contract['funding_agency_id']:
+            # 2. Link to Funding Agency (Prefer Sub Agency if available)
+            funding_agency_id = contract['funding_sub_agency_id'] or contract['funding_agency_id']
+            if funding_agency_id:
                 query_rel_fund = """
                 MATCH (c:Contract {id: $c_id})
                 MATCH (a:Agency {id: $a_id})
                 MERGE (a)-[:FUNDED]->(c)
                 """
                 neo4j_session.run(query_rel_fund, c_id=str(
-                    contract['id']), a_id=str(contract['funding_agency_id']))
-
-            # 4. Link to Funding Sub Agency
-            if contract['funding_sub_agency_id']:
-                query_rel_fund_sub = """
-                MATCH (c:Contract {id: $c_id})
-                MATCH (a:Agency {id: $a_id})
-                MERGE (a)-[:FUNDED]->(c)
-                """
-                neo4j_session.run(query_rel_fund_sub, c_id=str(
-                    contract['id']), a_id=str(contract['funding_sub_agency_id']))
+                    contract['id']), a_id=str(funding_agency_id))
 
             mark_synced(pg_conn, 'contract', contract['id'])
     logger.info(f"SYNC: Successfully synced {len(contracts)} contracts.")
