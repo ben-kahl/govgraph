@@ -5,7 +5,7 @@ from src.ingestion.scraper import fetch_contracts
 
 class TestIngestContracts(unittest.TestCase):
 
-    @patch('src.ingestion.scraper.requests.post')
+    @patch('requests.Session.post')
     def test_fetch_contracts_single_page(self, mock_post):
         # Mock API response
         mock_response = MagicMock()
@@ -28,7 +28,7 @@ class TestIngestContracts(unittest.TestCase):
         self.assertEqual(kwargs['json']['spending_level'], "awards")
         mock_post.assert_called_once()
 
-    @patch('src.ingestion.scraper.requests.post')
+    @patch('requests.Session.post')
     def test_fetch_contracts_pagination(self, mock_post):
         # Mock API response for two pages
         mock_response_p1 = MagicMock()

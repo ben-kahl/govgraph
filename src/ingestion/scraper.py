@@ -1,6 +1,9 @@
 import os
+import time
 import datetime
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import boto3
 import logging
@@ -19,6 +22,24 @@ SQS_QUEUE_URL = os.environ.get("SQS_QUEUE_URL")
 
 s3_client = boto3.client('s3')
 sqs_client = boto3.client('sqs')
+
+
+def get_session():
+    """Configures a requests Session with robust retries and connection pooling."""
+    session = requests.Session()
+    # Retry on 429 Too Many Requests, 500, 502, 503, 504
+    retry = Retry(
+        total=5,
+        read=5,
+        connect=5,
+        backoff_factor=1,
+        status_forcelist=(429, 500, 502, 503, 504),
+    )
+    adapter = HTTPAdapter(
+        max_retries=retry, pool_connections=10, pool_maxsize=10)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 
 def fetch_contracts(start_date, end_date, spending_level="awards", award_type_codes=None):
@@ -73,27 +94,38 @@ def fetch_contracts(start_date, end_date, spending_level="awards", award_type_co
 
     all_results = []
     page = 1
+    session = get_session()
 
     while True:
         logger.info(f"Fetching {spending_level} page {page}...")
         payload["page"] = page
-        response = requests.post(url, headers=headers,
-                                 json=payload, timeout=30)
 
-        if response.status_code != 200:
-            logger.error(f"Error fetching data: {
-                         response.status_code} - {response.text}")
-            break
+        try:
+            response = session.post(
+                url, headers=headers, json=payload, timeout=30)
 
-        data = response.json()
-        results = data.get("results", [])
-        if not results:
-            break
+            if response.status_code != 200:
+                logger.error(f"Error fetching data: {
+                             response.status_code} - {response.text}")
+                break
 
-        all_results.extend(results)
-        if not data.get("page_metadata", {}).get("hasNext", False):
+            data = response.json()
+            results = data.get("results", [])
+            if not results:
+                break
+
+            all_results.extend(results)
+            if not data.get("page_metadata", {}).get("hasNext", False):
+                break
+
+            page += 1
+            # Prevent rate limiting and connection drops from USAspending API
+            time.sleep(0.5)
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch {spending_level} page {
+                         page} due to connection error: {e}")
             break
-        page += 1
 
     return all_results
 
