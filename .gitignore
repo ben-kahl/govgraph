@@ -12,3 +12,4 @@ venv/
 results.txt
 infra/scripts/reset_databases.py
 response.json
+dev.tfvars
