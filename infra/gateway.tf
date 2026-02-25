@@ -16,6 +16,11 @@ module "api_gateway" {
     expose_headers = []
     max_age        = 300
   }
+
+  stage_default_route_settings = {
+    throttling_rate_limit  = 100
+    throttling_burst_limit = 200
+  }
 }
 
 resource "aws_apigatewayv2_integration" "api_lambda" {

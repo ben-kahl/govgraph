@@ -12,7 +12,7 @@ os.environ["DB_SECRET_ARN"] = "arn:test"
 os.environ["COGNITO_USER_POOL_ID"] = "us-east-1_testpool"
 os.environ["COGNITO_REGION"] = "us-east-1"
 
-from src.api.api import app, limiter
+from src.api.api import app
 # Import from the top-level 'auth' module (src/api on pythonpath) so the
 # dependency_overrides key matches what api.py registered with FastAPI.
 import auth
@@ -33,13 +33,6 @@ def mock_auth(monkeypatch):
     yield
     app.dependency_overrides.clear()
 
-
-@pytest.fixture(autouse=True)
-def disable_rate_limiting():
-    """Disable slowapi rate limiting during tests."""
-    limiter.enabled = False
-    yield
-    limiter.enabled = True
 
 
 @pytest.fixture

@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
@@ -5,11 +6,15 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from jose import jwt
+from fastapi.responses import JSONResponse
 from mangum import Mangum
 from neo4j.graph import Node, Relationship
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from auth import get_current_user
 from database import close_drivers, get_neo4j_driver, get_pg_connection
@@ -37,27 +42,6 @@ from models import (
 
 
 # ---------------------------------------------------------------------------
-# Rate limiter — keyed on JWT sub, falls back to IP
-# ---------------------------------------------------------------------------
-
-def _get_user_key(request: Request) -> str:
-    auth = request.headers.get("authorization", "")
-    if auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1]
-        try:
-            claims = jwt.get_unverified_claims(token)
-            sub = claims.get("sub")
-            if sub:
-                return sub
-        except Exception:
-            pass
-    return request.client.host if request.client else "unknown"
-
-
-limiter = Limiter(key_func=_get_user_key)
-
-
-# ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 
@@ -73,11 +57,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_allowed_origins = os.environ.get(
-    "ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -157,8 +144,7 @@ def process_graph_result(result):
 def _require_neo4j():
     driver = get_neo4j_driver()
     if not driver:
-        raise HTTPException(
-            status_code=503, detail="Graph database unavailable")
+        raise HTTPException(status_code=503, detail="Graph database unavailable")
     return driver
 
 
@@ -186,9 +172,7 @@ async def health():
 # ---------------------------------------------------------------------------
 
 @app.get("/vendors", response_model=PaginatedResponse)
-@limiter.limit("60/minute")
 async def get_vendors(
-    request: Request,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -223,9 +207,7 @@ async def get_vendors(
 
 
 @app.get("/vendors/{id}", response_model=Vendor)
-@limiter.limit("60/minute")
 async def get_vendor_by_id(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -242,9 +224,7 @@ async def get_vendor_by_id(
 
 
 @app.get("/vendors/{id}/stats", response_model=VendorStats)
-@limiter.limit("60/minute")
 async def get_vendor_stats(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -304,9 +284,7 @@ async def get_vendor_stats(
 # ---------------------------------------------------------------------------
 
 @app.get("/agencies", response_model=PaginatedResponse)
-@limiter.limit("60/minute")
 async def get_agencies(
-    request: Request,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -341,9 +319,7 @@ async def get_agencies(
 
 
 @app.get("/agencies/{id}", response_model=Agency)
-@limiter.limit("60/minute")
 async def get_agency_by_id(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -360,9 +336,7 @@ async def get_agency_by_id(
 
 
 @app.get("/agencies/{id}/stats", response_model=AgencyStats)
-@limiter.limit("60/minute")
 async def get_agency_stats(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -422,9 +396,7 @@ async def get_agency_stats(
 # ---------------------------------------------------------------------------
 
 @app.get("/contracts", response_model=PaginatedResponse)
-@limiter.limit("60/minute")
 async def get_contracts(
-    request: Request,
     vendor_id: Optional[UUID] = None,
     agency_id: Optional[UUID] = None,
     min_amount: Optional[float] = None,
@@ -449,16 +421,13 @@ async def get_contracts(
                 conditions.append("obligated_amount >= %s")
                 params.append(min_amount)
 
-            where_clause = " WHERE " + \
-                " AND ".join(conditions) if conditions else ""
+            where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
 
-            cur.execute(
-                f"SELECT COUNT(*) FROM contracts {where_clause}", params)
+            cur.execute(f"SELECT COUNT(*) FROM contracts {where_clause}", params)
             total = cur.fetchone()["count"]
 
             cur.execute(
-                f"SELECT * FROM contracts {
-                    where_clause} ORDER BY signed_date DESC LIMIT %s OFFSET %s",
+                f"SELECT * FROM contracts {where_clause} ORDER BY signed_date DESC LIMIT %s OFFSET %s",
                 params + [size, offset],
             )
             items = cur.fetchall()
@@ -469,9 +438,7 @@ async def get_contracts(
 
 
 @app.get("/contracts/{id}", response_model=Contract)
-@limiter.limit("60/minute")
 async def get_contract_by_id(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -481,8 +448,7 @@ async def get_contract_by_id(
             cur.execute("SELECT * FROM contracts WHERE id = %s", (str(id),))
             contract = cur.fetchone()
             if not contract:
-                raise HTTPException(
-                    status_code=404, detail="Contract not found")
+                raise HTTPException(status_code=404, detail="Contract not found")
             return contract
     finally:
         conn.close()
@@ -493,9 +459,7 @@ async def get_contract_by_id(
 # ---------------------------------------------------------------------------
 
 @app.get("/graph/vendor/{id}", response_model=GraphResponse)
-@limiter.limit("20/minute")
 async def get_vendor_graph(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -515,9 +479,7 @@ async def get_vendor_graph(
 
 
 @app.get("/graph/agency/{id}", response_model=GraphResponse)
-@limiter.limit("20/minute")
 async def get_agency_graph(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -536,9 +498,7 @@ async def get_agency_graph(
 
 
 @app.get("/graph/vendor/{id}/supply-chain", response_model=GraphResponse)
-@limiter.limit("20/minute")
 async def get_vendor_supply_chain(
-    request: Request,
     id: UUID,
     depth: int = Query(3, ge=1, le=5),
     current_user: dict = Depends(get_current_user),
@@ -557,9 +517,7 @@ async def get_vendor_supply_chain(
 
 
 @app.get("/graph/vendor/{id}/peers", response_model=GraphResponse)
-@limiter.limit("20/minute")
 async def get_vendor_peers(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -582,9 +540,7 @@ async def get_vendor_peers(
 
 
 @app.get("/graph/path", response_model=GraphResponse)
-@limiter.limit("20/minute")
 async def get_graph_path(
-    request: Request,
     from_id: UUID = Query(..., alias="from"),
     to_id: UUID = Query(..., alias="to"),
     current_user: dict = Depends(get_current_user),
@@ -604,9 +560,7 @@ async def get_graph_path(
 
 
 @app.get("/graph/hubs", response_model=List[HubVendor])
-@limiter.limit("20/minute")
 async def get_hub_vendors(
-    request: Request,
     min_sub_count: int = Query(5, ge=1),
     current_user: dict = Depends(get_current_user),
 ):
@@ -641,9 +595,7 @@ async def get_hub_vendors(
 # ---------------------------------------------------------------------------
 
 @app.get("/analytics/summary")
-@limiter.limit("30/minute")
 async def get_summary_stats(
-    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_pg_connection()
@@ -655,8 +607,7 @@ async def get_summary_stats(
             cur.execute("SELECT COUNT(*) FROM agencies")
             agency_count = cur.fetchone()["count"]
 
-            cur.execute(
-                "SELECT COUNT(*), SUM(obligated_amount) FROM contracts")
+            cur.execute("SELECT COUNT(*), SUM(obligated_amount) FROM contracts")
             contract_stats = cur.fetchone()
 
             return {
@@ -670,9 +621,7 @@ async def get_summary_stats(
 
 
 @app.get("/analytics/market-share", response_model=List[MarketShareEntry])
-@limiter.limit("30/minute")
 async def get_market_share(
-    request: Request,
     limit: int = Query(25, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
@@ -701,9 +650,7 @@ async def get_market_share(
 
 
 @app.get("/analytics/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
-@limiter.limit("30/minute")
 async def get_agency_spending_over_time(
-    request: Request,
     id: UUID,
     period: str = Query("month", pattern="^(month|year)$"),
     current_user: dict = Depends(get_current_user),
@@ -730,9 +677,7 @@ async def get_agency_spending_over_time(
 
 
 @app.get("/analytics/vendor/{id}/award-types", response_model=List[AwardTypeBreakdown])
-@limiter.limit("30/minute")
 async def get_vendor_award_types(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -758,9 +703,7 @@ async def get_vendor_award_types(
 
 
 @app.get("/analytics/agency/{id}/vendor-concentration", response_model=List[ConcentrationMetric])
-@limiter.limit("30/minute")
 async def get_agency_vendor_concentration(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -795,9 +738,7 @@ async def get_agency_vendor_concentration(
 
 
 @app.get("/analytics/vendor/{id}/velocity", response_model=List[VelocityEntry])
-@limiter.limit("30/minute")
 async def get_vendor_velocity(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -824,9 +765,7 @@ async def get_vendor_velocity(
 
 
 @app.get("/analytics/vendor/{id}/subcontract-flow", response_model=List[SubcontractFlow])
-@limiter.limit("30/minute")
 async def get_vendor_subcontract_flow(
-    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -858,9 +797,7 @@ async def get_vendor_subcontract_flow(
 
 
 @app.get("/analytics/resolution-quality", response_model=List[ResolutionQualityEntry])
-@limiter.limit("30/minute")
 async def get_resolution_quality(
-    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_pg_connection()
@@ -870,9 +807,9 @@ async def get_resolution_quality(
                 """
                 SELECT
                     resolution_method,
-                    COUNT(*)                                         AS contract_count,
-                    ROUND(AVG(resolution_confidence) * 100, 2)      AS avg_confidence_pct,
-                    COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER (), 0) AS share_pct
+                    COUNT(*)                                              AS contract_count,
+                    ROUND(AVG(resolution_confidence) * 100, 2)           AS avg_confidence_pct,
+                    COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER (), 0)  AS share_pct
                 FROM contracts
                 GROUP BY resolution_method
                 ORDER BY contract_count DESC
@@ -884,9 +821,7 @@ async def get_resolution_quality(
 
 
 @app.get("/analytics/risk/award-spikes", response_model=List[AnomalyEntry])
-@limiter.limit("30/minute")
 async def get_award_spikes(
-    request: Request,
     z_threshold: float = Query(3.0, ge=1.0),
     current_user: dict = Depends(get_current_user),
 ):
@@ -926,9 +861,7 @@ async def get_award_spikes(
 
 
 @app.get("/analytics/risk/new-entrants", response_model=List[NewEntrant])
-@limiter.limit("30/minute")
 async def get_new_entrants(
-    request: Request,
     days: int = Query(90, ge=1, le=365),
     min_value: float = Query(500000.0, ge=0),
     current_user: dict = Depends(get_current_user),
@@ -962,9 +895,7 @@ async def get_new_entrants(
 # ---------------------------------------------------------------------------
 
 @app.get("/analytics/risk/sole-source", response_model=List[SoleSourceFlag])
-@limiter.limit("20/minute")
 async def get_sole_source(
-    request: Request,
     award_type: str = Query("A"),
     current_user: dict = Depends(get_current_user),
 ):
@@ -989,9 +920,7 @@ async def get_sole_source(
 
 
 @app.get("/analytics/risk/circular-subcontracts", response_model=List[CircularChain])
-@limiter.limit("20/minute")
 async def get_circular_subcontracts(
-    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     driver = _require_neo4j()
