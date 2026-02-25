@@ -31,7 +31,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
-from neo4j.graph import Node, Relationship
+from neo4j.graph import Node, Path, Relationship
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,32 +104,39 @@ def process_graph_result(result):
     edges = []
     seen_nodes = set()
 
+    def _add_node(item: Node):
+        node_id = item.get("id") or item.element_id
+        if node_id not in seen_nodes:
+            nodes.append({"data": _node_to_dict(item)})
+            seen_nodes.add(node_id)
+
+    def _add_relationship(item: Relationship):
+        for n in [item.start_node, item.end_node]:
+            _add_node(n)
+        edges.append({
+            "data": {
+                "id": item.element_id,
+                "source": item.start_node.get("id") or item.start_node.element_id,
+                "target": item.end_node.get("id") or item.end_node.element_id,
+                "label": item.type,
+            }
+        })
+
     for record in result:
         for item in record.values():
             if isinstance(item, Node):
-                node_id = item.get("id") or item.element_id
-                if node_id not in seen_nodes:
-                    nodes.append({"data": _node_to_dict(item)})
-                    seen_nodes.add(node_id)
-
+                _add_node(item)
             elif isinstance(item, Relationship):
-                start_node = item.start_node
-                end_node = item.end_node
-
-                for n in [start_node, end_node]:
-                    n_id = n.get("id") or n.element_id
-                    if n_id not in seen_nodes:
-                        nodes.append({"data": _node_to_dict(n)})
-                        seen_nodes.add(n_id)
-
-                edges.append({
-                    "data": {
-                        "id": item.element_id,
-                        "source": start_node.get("id") or start_node.element_id,
-                        "target": end_node.get("id") or end_node.element_id,
-                        "label": item.type,
-                    }
-                })
+                _add_relationship(item)
+            elif isinstance(item, Path):
+                for n in item.nodes:
+                    _add_node(n)
+                for r in item.relationships:
+                    _add_relationship(r)
+            elif isinstance(item, list):
+                for element in item:
+                    if isinstance(element, Relationship):
+                        _add_relationship(element)
 
     return {"nodes": nodes, "edges": edges}
 
