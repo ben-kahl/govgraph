@@ -44,6 +44,15 @@ const components = {
   },
 };
 
+function RedirectWhenAuthenticated() {
+  const router = useRouter();
+  const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus]);
+  useEffect(() => {
+    if (authStatus === 'authenticated') router.push('/dashboard');
+  }, [authStatus, router]);
+  return null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -60,10 +69,7 @@ export default function LoginPage() {
         formFields={formFields}
         components={components}
       >
-        {({ user }) => {
-          if (user) router.push('/dashboard');
-          return <></>;
-        }}
+        <RedirectWhenAuthenticated />
       </Authenticator>
     </div>
   );
