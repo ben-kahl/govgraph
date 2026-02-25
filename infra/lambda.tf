@@ -291,12 +291,7 @@ module "api_lambda" {
 
   layers = [aws_lambda_layer_version.dependencies.arn]
 
-  source_path = [
-    {
-      path             = "${path.module}/../src/api"
-      pip_requirements = true
-    }
-  ]
+  source_path = "${path.module}/../src/api"
 
   ignore_source_code_hash = true
 
