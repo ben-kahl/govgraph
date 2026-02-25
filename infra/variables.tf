@@ -101,6 +101,12 @@ variable "github_repo_url" {
   type        = string
 }
 
+variable "github_access_token" {
+  description = "GitHub Fine-Grained PAT for Amplify repo access. Required permissions: Contents (read), Webhooks (read/write), Administration (read/write)."
+  type        = string
+  sensitive   = true
+}
+
 variable "allowed_origins" {
   description = "Comma-separated allowed CORS origins (e.g. http://localhost:3000 or Amplify URL)"
   type        = string
