@@ -13,6 +13,12 @@ resource "aws_cognito_user_pool" "main" {
     temporary_password_validity_days = 7
   }
 
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -64,7 +70,6 @@ resource "aws_cognito_user_pool_client" "frontend" {
 
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
-    "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
