@@ -1,0 +1,20 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - curl -fsSL https://bun.sh/install | bash
+        - export BUN_INSTALL="$HOME/.bun"
+        - export PATH="$BUN_INSTALL/bin:$PATH"
+        - cd frontend && bun install --frozen-lockfile
+    build:
+      commands:
+        - cd frontend && bun run build
+  artifacts:
+    baseDirectory: frontend/.next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - frontend/node_modules/**/*
+      - frontend/.next/cache/**/*

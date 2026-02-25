@@ -27,3 +27,8 @@ output "cognito_client_id" {
   description = "Cognito frontend app client ID"
   value       = aws_cognito_user_pool_client.frontend.id
 }
+
+output "amplify_app_url" {
+  description = "Amplify Hosting URL for the frontend"
+  value       = "https://main.${aws_amplify_app.frontend.default_domain}"
+}

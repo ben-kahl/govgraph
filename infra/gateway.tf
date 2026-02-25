@@ -12,7 +12,7 @@ module "api_gateway" {
   cors_configuration = {
     allow_headers  = ["content-type", "authorization"]
     allow_methods  = ["GET", "POST", "OPTIONS"]
-    allow_origins  = ["http://localhost:3000"]
+    allow_origins  = [var.allowed_origins]
     expose_headers = []
     max_age        = 300
   }

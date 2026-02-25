@@ -307,7 +307,7 @@ module "api_lambda" {
     NEO4J_SECRET_ARN     = aws_secretsmanager_secret.neo4j_credentials.arn
     COGNITO_USER_POOL_ID = aws_cognito_user_pool.main.id
     COGNITO_REGION       = "us-east-1"
-    ALLOWED_ORIGINS      = "http://localhost:3000"
+    ALLOWED_ORIGINS      = var.allowed_origins
   }
 
   attach_policy_json = true
