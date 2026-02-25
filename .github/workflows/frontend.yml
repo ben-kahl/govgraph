@@ -1,0 +1,48 @@
+name: "Frontend CI"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+  pull_request:
+    paths:
+      - "frontend/**"
+
+jobs:
+  ci:
+    name: "Type-check, Test & Build"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: bunx tsc --noEmit
+
+      - name: Unit & Integration tests
+        run: bun run test --ci
+
+      - name: Build
+        run: bun run build
+        env:
+          # Dummy values so Next.js build doesn't fail on missing env vars
+          NEXT_PUBLIC_API_URL: https://placeholder.example.com
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: us-east-1_PLACEHOLDER
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: placeholder-client-id
+          NEXT_PUBLIC_COGNITO_REGION: us-east-1
+          NEXT_PUBLIC_COGNITO_DOMAIN: placeholder.auth.us-east-1.amazoncognito.com
+          NEXT_PUBLIC_APP_URL: https://placeholder.example.com

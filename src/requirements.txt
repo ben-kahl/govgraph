@@ -2,3 +2,8 @@ requests
 psycopg2-binary
 neo4j
 rapidfuzz
+fastapi
+mangum
+pydantic
+python-jose[cryptography]
+httpx

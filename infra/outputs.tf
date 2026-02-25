@@ -12,3 +12,33 @@ output "sqs_queue_arn" {
   description = "SQS queue ARN"
   value       = module.sqs.queue_arn
 }
+
+output "api_gateway_url" {
+  description = "HTTP API Gateway invoke URL"
+  value       = module.api_gateway.api_endpoint
+}
+
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "cognito_client_id" {
+  description = "Cognito frontend app client ID"
+  value       = aws_cognito_user_pool_client.frontend.id
+}
+
+output "amplify_app_url" {
+  description = "Amplify Hosting URL for the frontend"
+  value       = "https://main.${aws_amplify_app.frontend.default_domain}"
+}
+
+output "cognito_hosted_ui_domain" {
+  description = "Cognito hosted-UI domain (use this as NEXT_PUBLIC_COGNITO_DOMAIN)"
+  value       = "${var.cognito_domain_prefix}.auth.us-east-1.amazoncognito.com"
+}
+
+output "google_redirect_uri" {
+  description = "Paste this as the authorized redirect URI in Google Cloud Console"
+  value       = "https://${var.cognito_domain_prefix}.auth.us-east-1.amazoncognito.com/oauth2/idpresponse"
+}

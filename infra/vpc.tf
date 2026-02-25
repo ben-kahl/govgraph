@@ -15,7 +15,7 @@ module "vpc" {
   database_subnets             = var.vpc_database_subnets
   create_database_subnet_group = true
 
-  # Cost Optimization: No NAT Gateway
+  # Cost Optimization: No managed NAT Gateway
   enable_nat_gateway = false
   single_nat_gateway = false
 
@@ -29,7 +29,25 @@ module "vpc" {
 }
 
 # -----------------------------------------------------------------------------
-# VPC Endpoints (Cost Optimization: Bypass NAT Gateway)
+# Low-Cost NAT (fck-nat)
+# -----------------------------------------------------------------------------
+module "fck_nat" {
+  source  = "RaJiska/fck-nat/aws"
+  version = "~> 1.4.0"
+
+  name      = "${var.vpc_name}-fck-nat"
+  vpc_id    = module.vpc.vpc_id
+  subnet_id = module.vpc.public_subnets[0]
+
+  # Cost optimization: t4g.nano is ~$3/month
+  instance_type = "t4g.nano"
+
+  update_route_tables = true
+  route_tables_ids    = { for i, id in module.vpc.private_route_table_ids : "private-${i}" => id }
+}
+
+# -----------------------------------------------------------------------------
+# VPC Endpoints (For AWS Services)
 # -----------------------------------------------------------------------------
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = module.vpc.vpc_id
@@ -50,57 +68,5 @@ resource "aws_vpc_endpoint" "dynamodb" {
 
   tags = {
     Name = "dynamodb-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "bedrock" {
-  vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.aws_region}.bedrock-runtime"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
-  security_group_ids  = [module.security_group.security_group_id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "bedrock-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "secretsmanager" {
-  vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
-  security_group_ids  = [module.security_group.security_group_id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "secretsmanager-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "logs" {
-  vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
-  security_group_ids  = [module.security_group.security_group_id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "logs-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "lambda" {
-  vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.aws_region}.lambda"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = [module.vpc.private_subnets[0]] # Consolidate to 1 AZ for cost savings
-  security_group_ids  = [module.security_group.security_group_id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "lambda-endpoint"
   }
 }

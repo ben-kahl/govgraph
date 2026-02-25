@@ -10,7 +10,7 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 * Infrastructure as Code: The entire environment is fully provisioned via Terraform
 
-* Serviceless Architecture: Using Lambda with scheduled jobs and to host the FastAPI backend. 
+* Serverless Architecture: Using Lambda with scheduled jobs and to host the FastAPI backend. 
 
 ## Tech Stack
 
@@ -20,7 +20,7 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 * Data & AI: Neo4j (AuraDB), PostgreSQL, Amazon Bedrock (LLM), Pandas
 
-* Frontend: Next.js, React Flow (Graph Visualization), Tailwind CSS
+* Frontend: Next.js, Cytoscape.js (Graph Visualization), Tailwind CSS
 
 * CI/CD: GitHub Actions, Pytest
 
@@ -73,8 +73,8 @@ The platform manages complex relationships with plans to include:
 
     [x] Core Backend Infrastructure
 
-    [Testing] Phase 1: ETL Backend Pipeline (Scraper, Bedrock Cleaner, SQS integration)
+    [x] Phase 1: ETL Backend Pipeline (Scraper, Bedrock Cleaner, SQS integration)
 
-    [ ] Phase 2: Neo4j Sync Engine
+    [x] Phase 2: Neo4j Sync Engine
 
-    [ ] Phase 3: Graph Visualization Dashboard
+    [Testing] Phase 3: Graph Visualization Dashboard

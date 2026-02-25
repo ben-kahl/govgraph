@@ -30,8 +30,10 @@ module "db" {
   db_subnet_group_name   = module.vpc.database_subnet_group_name
   vpc_security_group_ids = [module.security_group.security_group_id]
 
-  skip_final_snapshot = true
-  publicly_accessible = false
+  skip_final_snapshot     = true  # set false before going to production
+  deletion_protection     = false # set true before going to production
+  backup_retention_period = 7
+  publicly_accessible     = false
 
   # Postgres 17 usually doesn't require a custom option group for basic usage
   create_db_option_group = false

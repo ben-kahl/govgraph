@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS agencies (
     id UUID PRIMARY KEY,
     agency_code VARCHAR(10) UNIQUE NOT NULL,
     agency_name VARCHAR(500) NOT NULL,
+    parent_agency_id UUID REFERENCES agencies(id),
     department VARCHAR(255),
     agency_type VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -68,6 +69,9 @@ CREATE TABLE IF NOT EXISTS contracts (
     contract_id VARCHAR(255) NOT NULL,
     vendor_id UUID REFERENCES vendors(id),
     agency_id UUID REFERENCES agencies(id),
+    awarding_sub_agency_id UUID REFERENCES agencies(id),
+    funding_agency_id UUID REFERENCES agencies(id),
+    funding_sub_agency_id UUID REFERENCES agencies(id),
     parent_contract_id UUID, -- References handled manually due to partitioning
     
     description TEXT,
