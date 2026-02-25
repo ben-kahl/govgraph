@@ -51,10 +51,15 @@ async def lifespan(app: FastAPI):
     close_drivers()
 
 
+_debug = os.environ.get("DEBUG", "false").lower() == "true"
+
 app = FastAPI(
     title="GovGraph API",
     description="OSINT platform for federal procurement analysis",
     lifespan=lifespan,
+    docs_url="/docs" if _debug else None,
+    redoc_url="/redoc" if _debug else None,
+    openapi_url="/openapi.json" if _debug else None,
 )
 
 
@@ -77,6 +82,22 @@ app.add_middleware(
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _node_to_dict(item: Node) -> dict:
+    node_id = item.get("id") or item.element_id
+    label = (
+        item.get("canonicalName")
+        or item.get("agencyName")
+        or item.get("contractId")
+    )
+    if not label:
+        label = list(item.labels)[0] if item.labels else "Node"
+    return {
+        "id": node_id,
+        "label": label,
+        "type": list(item.labels)[0] if item.labels else "node",
+    }
+
+
 def process_graph_result(result):
     nodes = []
     edges = []
@@ -87,21 +108,7 @@ def process_graph_result(result):
             if isinstance(item, Node):
                 node_id = item.get("id") or item.element_id
                 if node_id not in seen_nodes:
-                    label = (
-                        item.get("canonicalName")
-                        or item.get("agencyName")
-                        or item.get("contractId")
-                    )
-                    if not label:
-                        label = list(item.labels)[0] if item.labels else "Node"
-                    nodes.append({
-                        "data": {
-                            "id": node_id,
-                            "label": label,
-                            "type": list(item.labels)[0].lower() if item.labels else "node",
-                            "properties": dict(item),
-                        }
-                    })
+                    nodes.append({"data": _node_to_dict(item)})
                     seen_nodes.add(node_id)
 
             elif isinstance(item, Relationship):
@@ -111,21 +118,7 @@ def process_graph_result(result):
                 for n in [start_node, end_node]:
                     n_id = n.get("id") or n.element_id
                     if n_id not in seen_nodes:
-                        n_label = (
-                            n.get("canonicalName")
-                            or n.get("agencyName")
-                            or n.get("contractId")
-                        )
-                        if not n_label:
-                            n_label = list(n.labels)[0] if n.labels else "Node"
-                        nodes.append({
-                            "data": {
-                                "id": n_id,
-                                "label": n_label,
-                                "type": list(n.labels)[0].lower() if n.labels else "node",
-                                "properties": dict(n),
-                            }
-                        })
+                        nodes.append({"data": _node_to_dict(n)})
                         seen_nodes.add(n_id)
 
                 edges.append({
@@ -134,7 +127,6 @@ def process_graph_result(result):
                         "source": start_node.get("id") or start_node.element_id,
                         "target": end_node.get("id") or end_node.element_id,
                         "label": item.type,
-                        "properties": dict(item),
                     }
                 })
 
@@ -158,7 +150,6 @@ async def root():
         "name": "GovGraph API",
         "status": "active",
         "version": "1.0.0",
-        "docs": "/docs",
     }
 
 
@@ -503,6 +494,10 @@ async def get_vendor_supply_chain(
     depth: int = Query(3, ge=1, le=5),
     current_user: dict = Depends(get_current_user),
 ):
+    # depth is validated by FastAPI (int, ge=1, le=5) but we assert here as
+    # defense-in-depth because it is f-string interpolated into the Cypher
+    # query. Neo4j does not support parameterized variable-length patterns.
+    assert isinstance(depth, int) and 1 <= depth <= 5
     driver = _require_neo4j()
     with driver.session() as session:
         result = session.run(
@@ -896,7 +891,7 @@ async def get_new_entrants(
 
 @app.get("/analytics/risk/sole-source", response_model=List[SoleSourceFlag])
 async def get_sole_source(
-    award_type: str = Query("A"),
+    award_type: str = Query("A", pattern=r"^[A-Z]{1,2}$"),
     current_user: dict = Depends(get_current_user),
 ):
     driver = _require_neo4j()
