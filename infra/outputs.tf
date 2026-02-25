@@ -32,3 +32,13 @@ output "amplify_app_url" {
   description = "Amplify Hosting URL for the frontend"
   value       = "https://main.${aws_amplify_app.frontend.default_domain}"
 }
+
+output "cognito_hosted_ui_domain" {
+  description = "Cognito hosted-UI domain (use this as NEXT_PUBLIC_COGNITO_DOMAIN)"
+  value       = "${var.cognito_domain_prefix}.auth.us-east-1.amazoncognito.com"
+}
+
+output "google_redirect_uri" {
+  description = "Paste this as the authorized redirect URI in Google Cloud Console"
+  value       = "https://${var.cognito_domain_prefix}.auth.us-east-1.amazoncognito.com/oauth2/idpresponse"
+}

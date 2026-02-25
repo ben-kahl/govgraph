@@ -70,6 +70,26 @@ variable "db_instance_class" {
   default     = "db.t3.micro"
 }
 
+variable "cognito_domain_prefix" {
+  description = "Globally unique prefix for the Cognito hosted-UI domain (e.g. gov-graph-auth)"
+  type        = string
+  default     = "gov-graph-auth"
+}
+
+variable "google_oauth_client_id" {
+  description = "Google OAuth 2.0 Client ID for Cognito social login"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google OAuth 2.0 Client Secret for Cognito social login"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "github_repo_url" {
   description = "GitHub repository URL for Amplify Hosting"
   type        = string

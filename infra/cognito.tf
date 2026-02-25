@@ -26,6 +26,32 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+resource "aws_cognito_user_pool_domain" "main" {
+  domain       = var.cognito_domain_prefix
+  user_pool_id = aws_cognito_user_pool.main.id
+}
+
+resource "aws_cognito_identity_provider" "google" {
+  count = var.google_oauth_client_id != "" ? 1 : 0
+
+  user_pool_id  = aws_cognito_user_pool.main.id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    client_id        = var.google_oauth_client_id
+    client_secret    = var.google_oauth_client_secret
+    authorize_scopes = "openid email profile"
+  }
+
+  attribute_mapping = {
+    email    = "email"
+    username = "sub"
+    name     = "name"
+    picture  = "picture"
+  }
+}
+
 resource "aws_cognito_user_pool_client" "frontend" {
   name         = "gov-graph-frontend"
   user_pool_id = aws_cognito_user_pool.main.id
@@ -41,16 +67,21 @@ resource "aws_cognito_user_pool_client" "frontend" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   allowed_oauth_flows_user_pool_client = true
-  supported_identity_providers         = ["COGNITO"]
 
-  # Update callback_urls for production
-  callback_urls = ["http://localhost:3000"]
-  logout_urls   = ["http://localhost:3000"]
+  supported_identity_providers = concat(
+    ["COGNITO"],
+    var.google_oauth_client_id != "" ? ["Google"] : []
+  )
 
-  access_token_validity  = 60    # minutes
-  refresh_token_validity = 30    # days
+  callback_urls = ["${var.allowed_origins}/login"]
+  logout_urls   = [var.allowed_origins]
+
+  access_token_validity  = 60 # minutes
+  refresh_token_validity = 30 # days
   token_validity_units {
     access_token  = "minutes"
     refresh_token = "days"
   }
+
+  depends_on = [aws_cognito_identity_provider.google]
 }
