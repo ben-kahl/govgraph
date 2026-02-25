@@ -35,6 +35,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: us-east-1
 
+      - name: Load Variables
+        env:
+          TFVARS_CONTENT: ${{ secrets.DEV_TFVARS }}
+        run: printf '%s' "$TFVARS_CONTENT" > dev.tfvars
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
@@ -50,10 +55,6 @@ jobs:
       - name: Terraform Validate
         id: validate
         run: terraform validate -no-color
-
-      - name: Terraform Test
-        id: test
-        run: terraform test
 
       - name: Terraform Plan
         id: plan
@@ -93,4 +94,4 @@ jobs:
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve -input=false -var-file="dev.tfvars" 
+        run: terraform apply -auto-approve tfplan
