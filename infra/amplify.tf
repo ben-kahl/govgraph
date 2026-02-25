@@ -1,7 +1,9 @@
 resource "aws_amplify_app" "frontend" {
-  name         = "gov-graph-frontend"
-  repository   = var.github_repo_url
-  access_token = var.github_oauth_token
+  name       = "gov-graph-frontend"
+  repository = var.github_repo_url
+  # No access_token — uses the AWS Amplify GitHub App for repo access.
+  # Prerequisite: install the app once at
+  #   AWS Console → Amplify → New app → GitHub → "Install AWS Amplify"
 
   build_spec = file("${path.module}/../frontend/amplify.yml")
   platform   = "WEB_COMPUTE"

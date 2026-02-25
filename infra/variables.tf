@@ -101,12 +101,6 @@ variable "github_repo_url" {
   type        = string
 }
 
-variable "github_oauth_token" {
-  description = "GitHub OAuth token for Amplify to access the repo"
-  type        = string
-  sensitive   = true
-}
-
 variable "allowed_origins" {
   description = "Comma-separated allowed CORS origins (e.g. http://localhost:3000 or Amplify URL)"
   type        = string
