@@ -1,23 +1,3 @@
-import logging
-import os
-from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
-from uuid import UUID
-
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from mangum import Mangum
-from neo4j.graph import Node, Relationship
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-from auth import get_current_user
-from database import close_drivers, get_neo4j_driver, get_pg_connection
 from models import (
     Agency,
     AgencyStats,
@@ -39,6 +19,25 @@ from models import (
     VendorStats,
     VelocityEntry,
 )
+from database import close_drivers, get_neo4j_driver, get_pg_connection
+from auth import get_current_user
+import logging
+import os
+from contextlib import asynccontextmanager
+from typing import Dict, List, Optional
+from uuid import UUID
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from mangum import Mangum
+from neo4j.graph import Node, Relationship
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +64,13 @@ app = FastAPI(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    logger.exception("Unhandled exception on %s %s",
+                     request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
-_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+_allowed_origins = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -136,7 +137,8 @@ def process_graph_result(result):
 def _require_neo4j():
     driver = get_neo4j_driver()
     if not driver:
-        raise HTTPException(status_code=503, detail="Graph database unavailable")
+        raise HTTPException(
+            status_code=503, detail="Graph database unavailable")
     return driver
 
 
@@ -412,13 +414,16 @@ async def get_contracts(
                 conditions.append("obligated_amount >= %s")
                 params.append(min_amount)
 
-            where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+            where_clause = " WHERE " + \
+                " AND ".join(conditions) if conditions else ""
 
-            cur.execute(f"SELECT COUNT(*) FROM contracts {where_clause}", params)
+            cur.execute(
+                f"SELECT COUNT(*) FROM contracts {where_clause}", params)
             total = cur.fetchone()["count"]
 
             cur.execute(
-                f"SELECT * FROM contracts {where_clause} ORDER BY signed_date DESC LIMIT %s OFFSET %s",
+                f"SELECT * FROM contracts {
+                    where_clause} ORDER BY signed_date DESC LIMIT %s OFFSET %s",
                 params + [size, offset],
             )
             items = cur.fetchall()
@@ -439,7 +444,8 @@ async def get_contract_by_id(
             cur.execute("SELECT * FROM contracts WHERE id = %s", (str(id),))
             contract = cur.fetchone()
             if not contract:
-                raise HTTPException(status_code=404, detail="Contract not found")
+                raise HTTPException(
+                    status_code=404, detail="Contract not found")
             return contract
     finally:
         conn.close()
@@ -602,7 +608,8 @@ async def get_summary_stats(
             cur.execute("SELECT COUNT(*) FROM agencies")
             agency_count = cur.fetchone()["count"]
 
-            cur.execute("SELECT COUNT(*), SUM(obligated_amount) FROM contracts")
+            cur.execute(
+                "SELECT COUNT(*), SUM(obligated_amount) FROM contracts")
             contract_stats = cur.fetchone()
 
             return {
@@ -647,7 +654,7 @@ async def get_market_share(
 @app.get("/analytics/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
 async def get_agency_spending_over_time(
     id: UUID,
-    period: str = Query("month", pattern="^(month|year)$"),
+    period: str = Query("month", pattern="^(month|quarter|year)$"),
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_pg_connection()
