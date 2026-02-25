@@ -31,8 +31,12 @@ resource "aws_cognito_user_pool_domain" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
+locals {
+  google_enabled = var.google_oauth_client_id != "" && var.google_oauth_client_secret != ""
+}
+
 resource "aws_cognito_identity_provider" "google" {
-  count = var.google_oauth_client_id != "" ? 1 : 0
+  count = local.google_enabled ? 1 : 0
 
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "Google"
@@ -70,7 +74,7 @@ resource "aws_cognito_user_pool_client" "frontend" {
 
   supported_identity_providers = concat(
     ["COGNITO"],
-    var.google_oauth_client_id != "" ? ["Google"] : []
+    local.google_enabled ? ["Google"] : []
   )
 
   callback_urls = ["${var.allowed_origins}/login"]
