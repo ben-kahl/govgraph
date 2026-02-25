@@ -90,6 +90,12 @@ variable "google_oauth_client_secret" {
   default     = ""
 }
 
+variable "app_url" {
+  description = "Deployed frontend URL (e.g. https://main.xxxx.amplifyapp.com). Set after first terraform apply via terraform output amplify_app_url."
+  type        = string
+  default     = "http://localhost:3000"
+}
+
 variable "github_repo_url" {
   description = "GitHub repository URL for Amplify Hosting"
   type        = string

@@ -12,7 +12,7 @@ resource "aws_amplify_app" "frontend" {
     NEXT_PUBLIC_COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.frontend.id
     NEXT_PUBLIC_COGNITO_REGION       = "us-east-1"
     NEXT_PUBLIC_COGNITO_DOMAIN       = "${var.cognito_domain_prefix}.auth.us-east-1.amazoncognito.com"
-    NEXT_PUBLIC_APP_URL              = "https://main.${aws_amplify_app.frontend.default_domain}"
+    NEXT_PUBLIC_APP_URL              = var.app_url
     _LIVE_UPDATES = jsonencode([{
       name    = "Next.js version"
       pkg     = "next-version"
