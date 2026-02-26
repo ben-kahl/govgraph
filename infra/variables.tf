@@ -110,5 +110,5 @@ variable "github_access_token" {
 variable "allowed_origins" {
   description = "Comma-separated allowed CORS origins (e.g. http://localhost:3000 or Amplify URL)"
   type        = string
-  default     = "https://main.d2680fpqajv7av.amplifyapp.com/"
+  default     = "https://main.d2680fpqajv7av.amplifyapp.com"
 }
