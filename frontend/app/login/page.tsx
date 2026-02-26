@@ -7,14 +7,17 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 const formFields = {
   signUp: {
+    email: {
+      order: 1,
+    },
     password: {
       label: 'Password',
       placeholder: 'Create your password',
-      order: 1,
+      order: 2,
     },
     confirm_password: {
       label: 'Confirm Password',
-      order: 2,
+      order: 3,
     },
   },
 };
