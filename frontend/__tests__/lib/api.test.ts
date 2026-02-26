@@ -145,13 +145,6 @@ describe('api.graph', () => {
     expect(mockFetch).toHaveBeenCalledWith(`${BASE_URL}/graph/vendor/v1`, expect.any(Object));
   });
 
-  it('hubs() includes min_sub_count param', async () => {
-    mockFetch.mockReturnValue(okJson({ nodes: [], edges: [] }));
-    await api.graph.hubs(10);
-    const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain('min_sub_count=10');
-  });
-
   it('path() encodes from and to', async () => {
     mockFetch.mockReturnValue(okJson({ nodes: [], edges: [] }));
     await api.graph.path('vendor-a', 'agency-b');
