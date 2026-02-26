@@ -4,7 +4,7 @@ resource "aws_amplify_app" "frontend" {
   access_token = var.github_access_token
 
   build_spec = file("${path.module}/../amplify.yml")
-  platform   = "WEB_COMPUTE"
+  platform   = "WEB"
 
   environment_variables = {
     NEXT_PUBLIC_API_URL              = module.api_gateway.api_endpoint
