@@ -1,22 +1,26 @@
 'use client';
-import { use } from 'react';
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-export default function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+function VendorDetail() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id') ?? '';
 
   const { data: vendor, isLoading: vLoading } = useQuery({
     queryKey: ['vendor', id],
     queryFn: () => api.vendors.getById(id),
+    enabled: !!id,
   });
 
   const { data: graph, isLoading: gLoading } = useQuery({
     queryKey: ['vendorGraph', id],
     queryFn: () => api.graph.vendor(id),
+    enabled: !!id,
   });
 
   if (vLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -44,5 +48,13 @@ export default function VendorDetailPage({ params }: { params: Promise<{ id: str
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function VendorDetailPage() {
+  return (
+    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+      <VendorDetail />
+    </Suspense>
   );
 }
