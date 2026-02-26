@@ -41,7 +41,7 @@ export default function AgenciesPage() {
               {data.items.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell>
-                    <Link href={`/agencies/${a.id}`} className="text-blue-600 hover:underline">
+                    <Link href={`/agencies/detail?id=${a.id}`} className="text-blue-600 hover:underline">
                       {a.name}
                     </Link>
                   </TableCell>

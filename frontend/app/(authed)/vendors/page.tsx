@@ -61,7 +61,7 @@ export default function VendorsPage() {
               {data.items.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell>
-                    <Link href={`/vendors/${v.id}`} className="text-blue-600 hover:underline">
+                    <Link href={`/vendors/detail?id=${v.id}`} className="text-blue-600 hover:underline">
                       {v.canonical_name}
                     </Link>
                   </TableCell>

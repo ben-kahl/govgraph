@@ -1,23 +1,27 @@
 'use client';
-import { use, useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { SpendingChart } from '@/components/SpendingChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-export default function AgencyDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+function AgencyDetail() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id') ?? '';
   const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
 
   const { data: agency, isLoading: aLoading } = useQuery({
     queryKey: ['agency', id],
     queryFn: () => api.agencies.getById(id),
+    enabled: !!id,
   });
 
   const { data: spending, isLoading: sLoading } = useQuery({
     queryKey: ['agencySpending', id, period],
     queryFn: () => api.analytics.spendingOverTime(id, period),
+    enabled: !!id,
   });
 
   if (aLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -51,5 +55,13 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function AgencyDetailPage() {
+  return (
+    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+      <AgencyDetail />
+    </Suspense>
   );
 }
