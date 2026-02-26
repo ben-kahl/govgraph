@@ -9,14 +9,6 @@ module "api_gateway" {
   create_domain_name = false
   create_certificate = false
 
-  cors_configuration = {
-    allow_headers  = ["content-type", "authorization"]
-    allow_methods  = ["GET", "POST", "OPTIONS"]
-    allow_origins  = [var.allowed_origins]
-    expose_headers = []
-    max_age        = 300
-  }
-
   stage_default_route_settings = {
     throttling_rate_limit  = 100
     throttling_burst_limit = 200
