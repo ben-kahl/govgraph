@@ -288,6 +288,7 @@ module "api_lambda" {
   handler       = "api.handler"
   runtime       = "python3.12"
   timeout       = 30
+  memory_size   = 512
 
   layers = [aws_lambda_layer_version.dependencies.arn]
 
