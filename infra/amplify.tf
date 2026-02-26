@@ -3,7 +3,7 @@ resource "aws_amplify_app" "frontend" {
   repository   = var.github_repo_url
   access_token = var.github_access_token
 
-  build_spec = file("${path.module}/../frontend/amplify.yml")
+  build_spec = file("${path.module}/../amplify.yml")
   platform   = "WEB_COMPUTE"
 
   environment_variables = {
