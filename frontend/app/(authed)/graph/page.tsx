@@ -6,22 +6,21 @@ import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-type Mode = 'hubs' | 'vendor' | 'agency';
+type Mode = 'vendor' | 'agency';
 
 export default function GraphPage() {
-  const [mode, setMode] = useState<Mode>('hubs');
+  const [mode, setMode] = useState<Mode>('vendor');
   const [entityId, setEntityId] = useState('');
   const [activeId, setActiveId] = useState('');
-  const [activeMode, setActiveMode] = useState<Mode>('hubs');
+  const [activeMode, setActiveMode] = useState<Mode>('vendor');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['graph', activeMode, activeId],
     queryFn: () => {
-      if (activeMode === 'hubs') return api.graph.hubs();
       if (activeMode === 'vendor') return api.graph.vendor(activeId);
       return api.graph.agency(activeId);
     },
-    enabled: activeMode === 'hubs' || !!activeId,
+    enabled: !!activeId,
   });
 
   function handleSearch(e: React.FormEvent) {
@@ -40,18 +39,15 @@ export default function GraphPage() {
           onChange={(e) => setMode(e.target.value as Mode)}
           className="border rounded px-2 py-1 text-sm"
         >
-          <option value="hubs">Hub Vendors</option>
           <option value="vendor">Vendor by ID</option>
           <option value="agency">Agency by ID</option>
         </select>
-        {mode !== 'hubs' && (
-          <Input
-            placeholder="Entity ID…"
-            value={entityId}
-            onChange={(e) => setEntityId(e.target.value)}
-            className="max-w-xs"
-          />
-        )}
+        <Input
+          placeholder="Entity ID…"
+          value={entityId}
+          onChange={(e) => setEntityId(e.target.value)}
+          className="max-w-xs"
+        />
         <Button type="submit">Load</Button>
       </form>
 

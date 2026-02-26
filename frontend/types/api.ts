@@ -18,8 +18,15 @@ export interface PaginatedVendors {
 
 export interface Agency {
   id: string;
-  name: string;
+  agency_name: string;
   agency_code: string | null;
+}
+
+export interface HubVendor {
+  canonical_name: string;
+  sub_count: number;
+  total_passed_down: number;
+  passthrough_pct: number | null;
 }
 
 export interface PaginatedAgencies {

@@ -30,7 +30,7 @@ function AgencyDetail() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{agency.name}</h1>
+        <h1 className="text-2xl font-bold">{agency.agency_name}</h1>
         {agency.agency_code && (
           <p className="text-sm text-muted-foreground font-mono">{agency.agency_code}</p>
         )}
