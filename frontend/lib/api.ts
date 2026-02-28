@@ -39,8 +39,10 @@ export const api = {
     getById: (id: string) => apiFetch<Vendor>(`/vendors/${id}`),
   },
   agencies: {
-    list: (page = 1, size = 20) =>
-      apiFetch<PaginatedAgencies>(`/agencies?page=${page}&size=${size}`),
+    list: (q?: string, page = 1, size = 20) =>
+      apiFetch<PaginatedAgencies>(
+        `/agencies?page=${page}&size=${size}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+      ),
     getById: (id: string) => apiFetch<Agency>(`/agencies/${id}`),
   },
   analytics: {
