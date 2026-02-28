@@ -42,7 +42,7 @@ export default function AgenciesPage() {
                 <TableRow key={a.id}>
                   <TableCell>
                     <Link href={`/agencies/detail?id=${a.id}`} className="text-blue-600 hover:underline">
-                      {a.name}
+                      {a.agency_name}
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{a.agency_code ?? '—'}</TableCell>

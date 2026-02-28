@@ -10,6 +10,7 @@ import type {
   NewEntrant,
   SoleSourceFlag,
   GraphResponse,
+  HubVendor,
 } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -60,7 +61,5 @@ export const api = {
     agency: (id: string) => apiFetch<GraphResponse>(`/graph/agency/${id}`),
     path: (from: string, to: string) =>
       apiFetch<GraphResponse>(`/graph/path?from=${from}&to=${to}`),
-    hubs: (minSub = 5) =>
-      apiFetch<GraphResponse>(`/graph/hubs?min_sub_count=${minSub}`),
   },
 };

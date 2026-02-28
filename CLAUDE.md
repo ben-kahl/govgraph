@@ -5,17 +5,17 @@
 * **Description:** An OSINT supply chain intelligence platform for federal procurement analysis. Aggregates USAspending.gov contract data, uses LLMs (Amazon Bedrock) for entity resolution on vendor records, and builds a knowledge graph (Neo4j) to identify vendor relationships, subsidiaries, and contracting patterns.
 
 ## Key Features
-* **AI-Driven Entity Resolution:** Utilizes Amazon Bedrock (Claude Haiku 4.5) via a 4-tier resolution strategy (DUNS/UEI → exact match → fuzzy matching → LLM) to normalize inconsistent vendor names with 95%+ accuracy while reducing LLM costs by 95%
-* **Infrastructure as Code:** Fully provisioned via Terraform with strict cost-control policies (serverless architecture, VPC endpoints, selective Neo4j sync) targeting <$15/month operational costs
+* **AI-Driven Entity Resolution:** Utilizes Amazon Bedrock (Claude Haiku 4.5) via a 6-tier resolution strategy (DynamoDB cache → DUNS/UEI → exact match → normalized match → fuzzy matching → LLM) to normalize inconsistent vendor names with 95%+ accuracy while reducing LLM costs by 95%
+* **Infrastructure as Code:** Fully provisioned via Terraform with strict cost-control policies (serverless architecture, fck-nat for NAT, selective Neo4j sync) targeting <$15/month operational costs
 * **Serverless Event-Driven Architecture:** Lambda-based microservices with SQS message queuing, DynamoDB caching, and automatic scaling based on queue depth
 * **Polyglot Persistence:** Combines PostgreSQL (relational integrity), DynamoDB (caching), S3 (data lake), and Neo4j (graph analytics) for optimal data storage strategies
 
 ## Tech Stack
-* **Infrastructure:** AWS Lambda, SQS, RDS, DynamoDB, S3, VPC Endpoints, EventBridge, Terraform
+* **Infrastructure:** AWS Lambda, SQS, RDS, DynamoDB, S3, fck-nat (t4g.nano), EventBridge, Terraform
 * **Backend:** Python (asyncio), Boto3, psycopg2, RapidFuzz
-* **Data & AI:** AuraDB free tier (Neo4j), AWS RDS (PostgreSQL), Amazon Bedrock (Claude Haiku 3.0), Pandas
-* **Frontend:** Next.js, Cytoscape.js (Network Graph Visualization), Tailwind CSS
-* **CI/CD:** GitHub Actions, pytest, Terraform Cloud
+* **Data & AI:** AuraDB free tier (Neo4j), AWS RDS (PostgreSQL), Amazon Bedrock (Claude Haiku 4.5), Pandas
+* **Frontend:** Next.js 16 (App Router), React 19, AWS Amplify v6 (auth), TanStack Query v5, Cytoscape.js, Recharts, shadcn/ui, Tailwind CSS v4, TypeScript, Bun
+* **CI/CD:** GitHub Actions, pytest, Jest, Terraform Cloud, AWS Amplify Hosting
 
 ## Architecture Overview
 
@@ -37,8 +37,8 @@ Lambda Neo4j Syncer (triggered by DynamoDB Streams)
 
 ### Key Design Decisions
 * **Serverless-First:** Eliminated Kubernetes/EKS to reduce costs from $126/month to <$15/month
-* **4-Tier Entity Resolution:** DUNS/UEI exact match (40%) → canonical name match (20%) → fuzzy matching (30%) → DynamoDB cache (5%) → Bedrock LLM (5%)
-* **VPC Endpoints:** Replaced NAT Gateway ($33/month) with VPC endpoints ($7/month) for AWS service access
+* **6-Tier Entity Resolution:** DynamoDB cache → DUNS/UEI exact match → canonical name match → normalized name match → fuzzy matching (RapidFuzz) → Bedrock LLM (~5% of requests)
+* **fck-nat:** t4g.nano EC2 NAT instance (~$3/month) replaces VPC Interface endpoint for Bedrock ($7/month) — saves ~$4/month
 * **Selective Neo4j Sync:** Only sync vendors with >$1M contract value to stay within free tier limits (50K nodes, 175K relationships)
 * **S3 Data Lake:** Archive raw USAspending JSON for reprocessing and historical analysis
 
@@ -49,10 +49,20 @@ Lambda Neo4j Syncer (triggered by DynamoDB Streams)
 * Robust unit and integration testing (>80% coverage target)
 
 ## Testing
-* Use the virtual environment in ./venv/
-``` bash
+**Backend (Python):** Use the virtual environment in `./venv/`
+```bash
 venv/bin/python -m pytest
 ```
+pytest.ini is at root; `src/api` is on pythonpath so `import auth` works correctly in tests.
+
+**Frontend (TypeScript):** Run from `./frontend/`
+```bash
+cd frontend && bun run test
+# or with coverage:
+bun run test:coverage
+```
+Uses Jest + @testing-library/react. Tests live in `frontend/__tests__/`.
+**Important:** Use `bun run test` (invokes Jest), NOT `bun test` (Bun's native runner — incompatible with jest.mock/jsdom).
 
 ## Installation & Deployment
 
@@ -113,6 +123,10 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
 * [x] System design completed (serverless architecture)
 * [x] Terraform backend configured
 * [x] Phase 1: ETL Backend Pipeline
+* [x] Phase 2: Neo4j Sync
+* [x] Phase 3: FastAPI — Cognito JWT auth, rate limiting, 16+ endpoints, API Gateway, infra complete
+* [x] Phase 4: Frontend — Next.js 16 App Router, Amplify Auth, TanStack Query v5, Recharts, Cytoscape
+* [ ] **Active:** Frontend polish, UX improvements, testing
 
 ### Phase 1: Data Pipeline (Serverless)
 **Focus:** Ingest, clean, and store contract data using Lambda-based event-driven architecture
@@ -125,13 +139,14 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
   * *Success:* Daily ingestion completes in <15 minutes, stores raw data in S3 and SQS
   * *Tech:* Python, boto3, requests, AWS Lambda, SQS, S3
 
-* **Task 1.2: Entity Resolution Lambda**
-  * Implement 4-tier resolution strategy:
-    1. DUNS/UEI exact match (DB query)
-    2. Canonical name exact match (DB query)
-    3. Fuzzy matching with RapidFuzz (in-memory)
-    4. DynamoDB cache lookup
-    5. Bedrock LLM resolution (fallback)
+* **Task 1.2: Entity Resolution Lambda** ✅
+  * Implemented 6-tier resolution strategy:
+    1. DynamoDB cache lookup (Tier 1 — fastest)
+    2. DUNS/UEI exact match (DB query)
+    3. Canonical name exact match (DB query)
+    4. Normalized name exact match
+    5. Fuzzy matching with RapidFuzz (in-memory)
+    6. Bedrock LLM resolution (fallback, ~5%)
   * Configure SQS trigger with batch size of 10
   * Set up DynamoDB table for entity cache (TTL: 90 days)
   * *Success:* Processes 500 contracts in ~5 minutes, <5% require LLM calls
@@ -145,12 +160,11 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
   * *Success:* Schema deployed, Lambda can connect via VPC, query latency <100ms
   * *Tech:* Terraform, PostgreSQL, AWS RDS, Secrets Manager
 
-* **Task 1.4: VPC & Networking**
-  * Create VPC with 2 private subnets (no NAT Gateway)
-  * Configure VPC endpoints: S3 (Gateway), DynamoDB (Gateway), Bedrock (Interface)
-  * Set up security groups: Lambda → RDS (port 5432)
-  * *Success:* Lambda functions access AWS services without internet egress costs
-  * *Tech:* Terraform, AWS VPC, VPC Endpoints
+* **Task 1.4: VPC & Networking** ✅
+  * VPC with private subnets; S3/DynamoDB via Gateway endpoints (free)
+  * fck-nat (t4g.nano, ~$3/month) for Bedrock internet access — no Bedrock Interface endpoint
+  * Security groups: Lambda → RDS (port 5432)
+  * *Tech:* Terraform, AWS VPC, VPC Gateway Endpoints, fck-nat
 
 * **Task 1.5: Monitoring & Alerting**
   * Create CloudWatch dashboard (Lambda metrics, SQS depth, RDS connections)
@@ -190,42 +204,54 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
   * *Success:* API returns results in <200ms, handles 100 req/min
   * *Tech:* FastAPI, Mangum (Lambda adapter), API Gateway
 
-* **Task 3.2: Authentication & Rate Limiting**
-  * Implement OAuth 2.0 with AWS Cognito
-  * Add API key-based rate limiting (slowapi)
-  * Configure CORS for frontend domain
-  * *Success:* Secure API with per-user rate limits
+* **Task 3.2: Authentication & Rate Limiting** ✅
+  * Cognito User Pool + JWT validation (JWKS cached in auth.py)
+  * slowapi rate limits: 60/min standard, 20/min graph, 30/min analytics (keyed on JWT sub)
+  * CORS controlled via `var.allowed_origins` in Terraform
+  * *Success:* All data endpoints require Bearer token; /health and / are public
 
 * **Task 3.3: API Documentation**
   * Auto-generate OpenAPI spec from FastAPI
   * Deploy Swagger UI endpoint
   * *Success:* Interactive API documentation available
 
-### Phase 4: Frontend Visualization (Next.js)
+### Phase 4: Frontend Visualization (Next.js) — Active
 **Focus:** Create interactive dashboard with graph visualization
 
-* **Task 4.1: Landing Page**
-  * Build landing page with project explanation
-  * Implement OAuth login with NextAuth.js
-  * *Success:* Users can sign in and access dashboard
-  * *Tech:* Next.js, NextAuth.js, Tailwind CSS
+**Runtime:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, Bun
+**Auth:** AWS Amplify v6 (`fetchAuthSession` → Bearer token injected on all API calls)
+**Data fetching:** TanStack Query v5 (queryKey/queryFn pattern)
+**UI components:** shadcn/ui (radix-ui base, class-variance-authority, tailwind-merge)
+**Testing:** Jest + @testing-library/react
+**Hosting:** AWS Amplify Hosting (amplify.yml at root)
 
-* **Task 4.2: Cytoscape.js Network Graph Visualization**
-  * Create vendor relationship network graph using Cytoscape.js
-  * Build modern UI wrapper with glassmorphic sidebar, floating controls, and node details drawer
-  * Implement interactive features: zoom, pan, node selection, force-directed layout
-  * Add filters (contract value, date range, agency) in sidebar
-  * Style with dark mode, data-driven node sizing, smooth animations
-  * Optimize for 1000+ node rendering with progressive loading
-  * *Success:* Interactive network graph visualizes supply chain relationships with sleek, modern UI
-  * *Tech:* Cytoscape.js, react-cytoscapejs, Next.js, Tailwind CSS, Framer Motion
+**Route structure (`frontend/app/`):**
+```
+/                          → Landing page
+/login                     → Amplify Authenticator UI
+/(authed)/dashboard        → Market share chart (Recharts)
+/(authed)/vendors          → Paginated vendor list + search
+/(authed)/vendors/detail   → Vendor detail (contracts, graph)
+/(authed)/agencies         → Agency list
+/(authed)/agencies/detail  → Agency detail + spending over time
+/(authed)/graph            → Cytoscape.js full-screen graph
+/(authed)/risk             → Award spikes, new entrants, sole-source flags
+```
 
-* **Task 4.3: Dashboard Analytics**
-  * Top vendors by contract value (table)
-  * Contract timeline visualization (chart)
-  * Agency spending breakdown (pie chart)
-  * *Success:* Comprehensive analytics dashboard
-  * *Tech:* Recharts, Next.js
+**Key components (`frontend/components/`):**
+- `CytoscapeGraph.tsx` — Network visualization (react-cytoscapejs)
+- `MarketShareChart.tsx` — Bar chart (Recharts)
+- `SpendingChart.tsx` — Time-series chart (Recharts)
+- `Nav.tsx` — Top navigation bar
+- `ui/` — shadcn/ui primitives (Card, Button, etc.)
+
+**API client (`frontend/lib/api.ts`):**
+- Typed fetch wrapper; reads `NEXT_PUBLIC_API_URL`
+- Namespaced: `api.vendors.*`, `api.agencies.*`, `api.analytics.*`, `api.graph.*`
+
+* **Task 4.1: Auth & Shell** ✅ — Amplify Authenticator, `(authed)` route group with session guard
+* **Task 4.2: Cytoscape.js Graph** ✅ — `/graph` page, vendor/agency graph endpoints
+* **Task 4.3: Dashboard Analytics** ✅ — market share, spending over time, risk flags (Recharts)
 
 ### Frontend Design Goals
 **Visual Identity:** Modern, professional, data-focused aesthetic suitable for a SaaS product
@@ -240,11 +266,13 @@ This project uses GitOps. Infrastructure and code changes are automatically depl
 
 **Component Architecture:**
 ```
-<GraphDashboard> (full viewport container)
-  ├─ <Sidebar> (glassmorphic panel: search, filters, stats)
-  ├─ <CytoscapeGraph> (main canvas: network visualization)
-  ├─ <ControlPanel> (floating: zoom, layout, export buttons)
-  └─ <NodeDetailsDrawer> (slide-out: vendor details, contract list)
+/(authed) route group
+  ├─ <Nav>                  (top nav: logo, links, sign-out)
+  ├─ /dashboard             → <MarketShareChart> (Recharts bar)
+  ├─ /graph                 → <CytoscapeGraph> (full-screen network)
+  ├─ /vendors[/detail]      → vendor table + contract list
+  ├─ /agencies[/detail]     → agency table + <SpendingChart>
+  └─ /risk                  → award spikes, new entrants, sole-source
 ```
 
 **Color Palette:**
@@ -272,57 +300,73 @@ govgraph/
 ├── .github/workflows/          # CI/CD pipelines
 │   ├── deploy.yml              # Automated deployment
 │   └── test.yml                # Unit and integration tests
+├── amplify.yml                 # AWS Amplify Hosting build config
 ├── infra/                      # Terraform infrastructure
 │   ├── main.tf                 # Root configuration
-│   ├── lambda.tf               # Lambda functions
+│   ├── lambda.tf               # 6 Lambda functions
+│   ├── gateway.tf              # HTTP API Gateway
+│   ├── cognito.tf              # Cognito User Pool + app client
 │   ├── rds.tf                  # PostgreSQL database
-│   ├── vpc.tf                  # VPC and networking
-│   ├── sqs.tf                  # Message queues
-│   ├── monitoring.tf           # CloudWatch dashboards
+│   ├── vpc.tf                  # VPC, fck-nat, gateway endpoints
+│   ├── sqs.tf                  # Message queues + DLQ
+│   ├── monitoring.tf           # CloudWatch dashboards & alarms
 │   ├── variables.tf            # Input variables
-│   ├── outputs.tf              # Output values
-│   ├── dev.tfvars              # Dev environment config
-│   ├── prod.tfvars             # Prod environment config
-│   └── scripts/
-│       └── init_db.py          # Database schema migration
+│   ├── outputs.tf              # api_gateway_url, cognito IDs, etc.
+│   ├── dev.tfvars
+│   └── prod.tfvars
 ├── src/
 │   ├── ingestion/              # Data ingestion Lambda
 │   │   ├── scraper.py          # USAspending API scraper
 │   │   └── requirements.txt
 │   ├── processing/             # Entity resolution Lambda
-│   │   ├── entity_resolver.py  # 4-tier resolution logic
+│   │   ├── entity_resolver.py  # 6-tier resolution logic
+│   │   ├── reprocess_lambda.py # Backfill reprocessing
 │   │   └── requirements.txt
 │   ├── sync/                   # Neo4j sync Lambda
-│   │   ├── neo4j_syncer.py     # Graph database sync
+│   │   ├── neo4j_syncer.py     # PostgreSQL → Neo4j sync
 │   │   └── requirements.txt
-│   ├── api/                    # FastAPI service
-│   │   ├── main.py             # API routes
+│   ├── api/                    # FastAPI service (Mangum adapter)
+│   │   ├── api.py              # All routes (JWT-protected)
+│   │   ├── auth.py             # Cognito JWKS validation
 │   │   ├── models.py           # Pydantic models
-│   │   ├── database.py         # DB connection
+│   │   ├── database.py         # DB connection (lazy init)
 │   │   └── requirements.txt
-│   └── dashboard/              # Next.js frontend
-│       ├── pages/              # Next.js pages
-│       │   ├── index.tsx       # Landing page
-│       │   └── dashboard.tsx   # Main graph dashboard
-│       ├── components/         # React components
-│       │   ├── GraphDashboard.tsx      # Main container
-│       │   ├── Sidebar.tsx             # Filters and search
-│       │   ├── CytoscapeGraph.tsx      # Network visualization
-│       │   ├── ControlPanel.tsx        # Graph controls
-│       │   └── NodeDetailsDrawer.tsx   # Vendor details
-│       ├── lib/                # Utilities
-│       │   ├── cytoscape-styles.ts     # Graph stylesheet
-│       │   └── api-client.ts           # API integration
-│       └── package.json
-├── tests/                      # Test suite
-│   ├── unit/
-│   │   ├── test_scraper.py
-│   │   └── test_resolver.py
-│   └── integration/
-│       └── test_pipeline.py
-├── deploy.sh                   # Build and deploy script
-├── SYSTEM_DESIGN.md            # Architecture documentation
-├── GEMINI.md                   # Project context (this file)
+│   ├── db/
+│   │   └── apply_schema.py     # Schema migration Lambda
+│   ├── monitoring/
+│   │   └── weekly_report.py    # CloudWatch Insights → SNS
+│   └── tests/
+│       └── unit/               # pytest unit tests
+├── frontend/                   # Next.js 16 App Router frontend
+│   ├── app/
+│   │   ├── (authed)/           # Route group — session-gated
+│   │   │   ├── layout.tsx      # Auth guard (fetchAuthSession)
+│   │   │   ├── dashboard/      # Market share chart
+│   │   │   ├── graph/          # Cytoscape.js full-screen graph
+│   │   │   ├── vendors/        # Vendor list + detail
+│   │   │   ├── agencies/       # Agency list + detail
+│   │   │   └── risk/           # Risk flags (spikes, entrants)
+│   │   ├── login/              # Amplify Authenticator UI
+│   │   ├── layout.tsx          # Root layout + providers
+│   │   ├── page.tsx            # Landing page
+│   │   └── providers.tsx       # Amplify + QueryClient providers
+│   ├── components/
+│   │   ├── CytoscapeGraph.tsx  # Network visualization
+│   │   ├── MarketShareChart.tsx # Bar chart (Recharts)
+│   │   ├── SpendingChart.tsx   # Time-series chart (Recharts)
+│   │   ├── Nav.tsx             # Top nav
+│   │   └── ui/                 # shadcn/ui primitives
+│   ├── lib/
+│   │   ├── api.ts              # Typed API client (TanStack Query ready)
+│   │   ├── amplify.ts          # Amplify config
+│   │   └── utils.ts            # cn() helper
+│   ├── types/
+│   │   └── api.ts              # TypeScript interfaces for API responses
+│   ├── __tests__/              # Jest + @testing-library/react
+│   ├── package.json            # Bun-managed dependencies
+│   └── next.config.ts
+├── pytest.ini                  # Python test config (src/api on pythonpath)
+├── deploy.sh                   # Lambda build & deploy script
 └── README.md                   # Public documentation
 ```
 
@@ -385,15 +429,15 @@ CREATE TABLE contracts (
 | DynamoDB | On-demand, 100K reads | $0.50 | $0.50 |
 | Bedrock | 750 Claude Haiku calls | $2.25 | $2.25 |
 | RDS | db.t3.micro, 20GB | $0 (free tier) | $16 |
-| VPC Endpoints | Bedrock Interface | $7 | $7 |
+| fck-nat | t4g.nano EC2 NAT instance | $3 | $3 |
 | S3 | 5GB storage, 100K requests | $0.50 | $0.50 |
 | CloudWatch | Logs, alarms | $2 | $2 |
 | Secrets Manager | 1 secret | $0.40 | $0.40 |
-| **Total** | | **~$13** | **~$29** |
+| **Total** | | **~$9** | **~$25** |
 
 ### Cost Optimization Strategies
 * **4-Tier Resolution:** Reduces Bedrock costs from $45/month to $2.25/month (95% reduction)
-* **VPC Endpoints:** Eliminates NAT Gateway ($33/month → $7/month)
+* **fck-nat:** Replaces Bedrock Interface VPC endpoint ($7/month) with t4g.nano EC2 NAT ($3/month)
 * **Serverless:** No fixed compute costs, pay-per-use only
 * **Free Tier Maximization:** Lambda, SQS, RDS (year 1)
 * **Selective Neo4j Sync:** Stays within free tier limits
