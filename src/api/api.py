@@ -110,17 +110,29 @@ async def log_requests(request: Request, call_next):
 
 def _node_to_dict(item: Node) -> dict:
     node_id = item.get("id") or item.element_id
-    label = (
+    node_type = list(item.labels)[0] if item.labels else "Node"
+    raw_label = (
         item.get("canonicalName")
         or item.get("agencyName")
+        or item.get("description")
         or item.get("contractId")
     )
-    if not label:
-        label = list(item.labels)[0] if item.labels else "Node"
+    if not raw_label:
+        raw_label = node_type
+    label = raw_label[:38] + "…" if len(raw_label) > 38 else raw_label
+
+    properties: Dict[str, Any] = {}
+    if node_type == "Contract":
+        for key in ("obligatedAmount", "contractId", "description", "signedDate", "awardType"):
+            val = item.get(key)
+            if val is not None:
+                properties[key] = str(val) if key == "signedDate" else val
+
     return {
         "id": node_id,
         "label": label,
-        "type": list(item.labels)[0] if item.labels else "node",
+        "type": node_type,
+        "properties": properties,
     }
 
 
@@ -525,9 +537,10 @@ async def get_vendor_graph(
             """
             MATCH (v:Vendor {id: $id})
             OPTIONAL MATCH (v)-[ra:AWARDED]->(c:Contract)
-            OPTIONAL MATCH (a:Agency)-[:AWARDED_CONTRACT]->(c)
-            WITH v, c, a, ra LIMIT 50
-            RETURN v, c, a, ra
+            OPTIONAL MATCH (a:Agency)-[rac:AWARDED_CONTRACT]->(c)
+            OPTIONAL MATCH (a2:Agency)-[rf:FUNDED]->(c)
+            WITH v, c, a, a2, ra, rac, rf LIMIT 50
+            RETURN v, c, a, a2, ra, rac, rf
             """,
             id=str(id),
         )
@@ -543,10 +556,11 @@ async def get_agency_graph(
     with driver.session() as session:
         result = session.run(
             """
-            MATCH (a:Agency {id: $id})-[:AWARDED_CONTRACT]->(c:Contract)<-[:AWARDED]-(v:Vendor)
-            OPTIONAL MATCH (v)-[:SUBCONTRACTED]->(sub:Vendor)
-            OPTIONAL MATCH (child:Agency)-[:SUBAGENCY_OF]->(a)
-            RETURN a, c, v, sub, child LIMIT 200
+            MATCH (a:Agency {id: $id})-[r1:AWARDED_CONTRACT]->(c:Contract)<-[r2:AWARDED]-(v:Vendor)
+            OPTIONAL MATCH (a2:Agency)-[rf:FUNDED]->(c)
+            OPTIONAL MATCH (v)-[r3:SUBCONTRACTED]->(sub:Vendor)
+            OPTIONAL MATCH (child:Agency)-[r4:SUBAGENCY_OF]->(a)
+            RETURN a, c, v, sub, child, a2, r1, r2, rf, r3, r4 LIMIT 200
             """,
             id=str(id),
         )
