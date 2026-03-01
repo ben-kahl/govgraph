@@ -19,14 +19,14 @@ jest.mock('next/dynamic', () => (fn: () => Promise<{ default: unknown }>) => {
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 
 const nodes: GraphNode[] = [
-  { id: 'v1', label: 'Acme Corp', type: 'Vendor' },
-  { id: 'a1', label: 'DoD', type: 'Agency' },
-  { id: 'c1', label: 'Contract-001', type: 'Contract' },
+  { data: { id: 'v1', label: 'Acme Corp', type: 'Vendor' } },
+  { data: { id: 'a1', label: 'DoD', type: 'Agency' } },
+  { data: { id: 'c1', label: 'Contract-001', type: 'Contract' } },
 ];
 
 const edges: GraphEdge[] = [
-  { source: 'v1', target: 'c1', type: 'AWARDED_CONTRACT' },
-  { source: 'a1', target: 'c1', type: 'ISSUED_CONTRACT' },
+  { data: { id: 'e1', source: 'v1', target: 'c1', label: 'AWARDED_CONTRACT' } },
+  { data: { id: 'e2', source: 'a1', target: 'c1', label: 'ISSUED_CONTRACT' } },
 ];
 
 describe('CytoscapeGraph', () => {

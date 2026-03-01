@@ -7,6 +7,9 @@ export interface Vendor {
   resolution_confidence: number;
   created_at: string;
   updated_at: string;
+  // Present on list responses (joined from contracts); absent on single-vendor detail
+  contract_count?: number;
+  total_obligated?: number;
 }
 
 export interface PaginatedVendors {
@@ -71,16 +74,23 @@ export interface SoleSourceFlag {
   total_spend: number;
 }
 
-export interface GraphNode {
+export interface GraphNodeData {
   id: string;
   label: string;
   type: 'Vendor' | 'Agency' | 'Contract';
 }
+export interface GraphNode {
+  data: GraphNodeData;
+}
 
-export interface GraphEdge {
+export interface GraphEdgeData {
+  id: string;
   source: string;
   target: string;
-  type: string;
+  label: string;
+}
+export interface GraphEdge {
+  data: GraphEdgeData;
 }
 
 export interface GraphResponse {
