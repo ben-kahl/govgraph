@@ -39,6 +39,8 @@ const samplePage: PaginatedVendors = {
       resolution_confidence: 0.95,
       created_at: '2024-01-01',
       updated_at: '2024-01-01',
+      contract_count: 12,
+      total_obligated: 5_200_000,
     },
     {
       id: 'v2',
@@ -49,6 +51,8 @@ const samplePage: PaginatedVendors = {
       resolution_confidence: 0.72,
       created_at: '2024-01-02',
       updated_at: '2024-01-02',
+      contract_count: 3,
+      total_obligated: 800_000,
     },
   ],
 };
@@ -79,12 +83,21 @@ describe('VendorsPage', () => {
     });
   });
 
-  it('shows LLM badge for LLM-resolved vendors', async () => {
+  it('shows formatted total obligated amount', async () => {
     api.vendors.list.mockResolvedValue(samplePage);
     render(<VendorsPage />, { wrapper: makeWrapper() });
     await waitFor(() => {
-      // Beta LLC is resolved_by_llm: true
-      expect(screen.getByText('LLM')).toBeInTheDocument();
+      expect(screen.getByText('$5.2M')).toBeInTheDocument();
+      expect(screen.getByText('$0.8M')).toBeInTheDocument();
+    });
+  });
+
+  it('shows contract count', async () => {
+    api.vendors.list.mockResolvedValue(samplePage);
+    render(<VendorsPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(screen.getByText('12')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
     });
   });
 

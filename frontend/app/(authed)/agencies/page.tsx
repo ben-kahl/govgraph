@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -14,16 +15,32 @@ import {
 } from '@/components/ui/table';
 
 export default function AgenciesPage() {
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['agencies', page],
-    queryFn: () => api.agencies.list(page),
+    queryKey: ['agencies', query, page],
+    queryFn: () => api.agencies.list(query || undefined, page),
   });
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setQuery(search);
+    setPage(1);
+  }
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Agencies</h1>
+      <form onSubmit={handleSearch} className="flex gap-2 max-w-md">
+        <Input
+          placeholder="Search agencies…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Button type="submit">Search</Button>
+      </form>
 
       {isLoading && <p className="text-muted-foreground">Loading…</p>}
       {isError && <p className="text-destructive">Failed to load agencies.</p>}

@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("startup: ALLOWED_ORIGINS=%s", os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000"))
     yield
     close_drivers()
 
@@ -77,6 +78,30 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["content-type", "authorization"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every request and response, including CORS-relevant headers."""
+    origin = request.headers.get("origin", "<no-origin>")
+    origin_allowed = origin in _allowed_origins
+    logger.info(
+        "request  method=%s path=%s origin=%s origin_allowed=%s auth=%s",
+        request.method,
+        request.url.path,
+        origin,
+        origin_allowed,
+        "present" if request.headers.get("authorization") else "missing",
+    )
+    response = await call_next(request)
+    logger.info(
+        "response method=%s path=%s status=%d acao=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        response.headers.get("access-control-allow-origin", "<not-set>"),
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -190,14 +215,41 @@ async def get_vendors(
                 )
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    "SELECT * FROM vendors WHERE canonical_name ILIKE %s OR uei = %s ORDER BY canonical_name LIMIT %s OFFSET %s",
+                    """
+                    SELECT v.*,
+                           COALESCE(cs.contract_count, 0) AS contract_count,
+                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
+                    FROM vendors v
+                    LEFT JOIN (
+                        SELECT vendor_id,
+                               COUNT(*) AS contract_count,
+                               SUM(obligated_amount) AS total_obligated
+                        FROM contracts GROUP BY vendor_id
+                    ) cs ON cs.vendor_id = v.id
+                    WHERE v.canonical_name ILIKE %s OR v.uei = %s
+                    ORDER BY cs.total_obligated DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                    """,
                     (search_query, q, size, offset),
                 )
             else:
                 cur.execute("SELECT COUNT(*) FROM vendors")
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    "SELECT * FROM vendors ORDER BY canonical_name LIMIT %s OFFSET %s",
+                    """
+                    SELECT v.*,
+                           COALESCE(cs.contract_count, 0) AS contract_count,
+                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
+                    FROM vendors v
+                    LEFT JOIN (
+                        SELECT vendor_id,
+                               COUNT(*) AS contract_count,
+                               SUM(obligated_amount) AS total_obligated
+                        FROM contracts GROUP BY vendor_id
+                    ) cs ON cs.vendor_id = v.id
+                    ORDER BY cs.total_obligated DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                    """,
                     (size, offset),
                 )
             items = cur.fetchall()
@@ -572,30 +624,41 @@ async def get_hub_vendors(
     min_sub_count: int = Query(5, ge=1),
     current_user: dict = Depends(get_current_user),
 ):
-    driver = _require_neo4j()
-    with driver.session() as session:
-        result = session.run(
-            """
-            MATCH (prime:Vendor)-[r:SUBCONTRACTED]->(sub:Vendor)
-            WITH prime,
-                 COUNT(DISTINCT sub) AS sub_count,
-                 SUM(r.amount)       AS total_passed_down
-            WHERE sub_count >= $min_sub_count
-            RETURN
-                prime.canonicalName          AS canonical_name,
-                sub_count,
-                total_passed_down,
-                prime.totalContractValue     AS prime_value,
-                CASE WHEN prime.totalContractValue > 0
-                     THEN ROUND(total_passed_down * 100.0 / prime.totalContractValue, 2)
-                     ELSE null
-                END AS passthrough_pct
-            ORDER BY sub_count DESC
-            LIMIT 50
-            """,
-            min_sub_count=min_sub_count,
-        )
-        return [dict(r) for r in result]
+    logger.info("hub_vendors: entry min_sub_count=%d", min_sub_count)
+    driver = get_neo4j_driver()
+    if not driver:
+        logger.error("hub_vendors: Neo4j driver unavailable")
+        raise HTTPException(status_code=503, detail="Graph database unavailable")
+    logger.info("hub_vendors: driver acquired, executing Cypher")
+    try:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (prime:Vendor)-[r:SUBCONTRACTED]->(sub:Vendor)
+                WITH prime,
+                     COUNT(DISTINCT sub) AS sub_count,
+                     SUM(r.amount)       AS total_passed_down
+                WHERE sub_count >= $min_sub_count
+                RETURN
+                    prime.canonicalName          AS canonical_name,
+                    sub_count,
+                    total_passed_down,
+                    prime.totalContractValue     AS prime_value,
+                    CASE WHEN prime.totalContractValue > 0
+                         THEN ROUND(total_passed_down * 100.0 / prime.totalContractValue, 2)
+                         ELSE null
+                    END AS passthrough_pct
+                ORDER BY sub_count DESC
+                LIMIT 50
+                """,
+                min_sub_count=min_sub_count,
+            )
+            rows = [dict(r) for r in result]
+        logger.info("hub_vendors: query returned %d rows", len(rows))
+        return rows
+    except Exception:
+        logger.exception("hub_vendors: Cypher query failed")
+        raise
 
 
 # ---------------------------------------------------------------------------

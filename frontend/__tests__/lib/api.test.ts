@@ -88,13 +88,27 @@ describe('api.vendors', () => {
 });
 
 describe('api.agencies', () => {
-  it('list() calls /agencies', async () => {
+  it('list() calls /agencies with default page and size', async () => {
     mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 1, size: 20 }));
     await api.agencies.list();
     expect(mockFetch).toHaveBeenCalledWith(
       `${BASE_URL}/agencies?page=1&size=20`,
       expect.any(Object)
     );
+  });
+
+  it('list() includes q param when query provided', async () => {
+    mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 1, size: 20 }));
+    await api.agencies.list('department of defense');
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('q=department%20of%20defense');
+  });
+
+  it('list() omits q param when no query', async () => {
+    mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 1, size: 20 }));
+    await api.agencies.list();
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain('q=');
   });
 
   it('getById() calls /agencies/:id', async () => {

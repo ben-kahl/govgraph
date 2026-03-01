@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -53,8 +52,8 @@ export default function VendorsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>UEI</TableHead>
-                <TableHead>Confidence</TableHead>
-                <TableHead>LLM Resolved</TableHead>
+                <TableHead className="text-right">Contracts</TableHead>
+                <TableHead className="text-right">Total Obligated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -66,9 +65,11 @@ export default function VendorsPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{v.uei ?? '—'}</TableCell>
-                  <TableCell>{(v.resolution_confidence * 100).toFixed(0)}%</TableCell>
-                  <TableCell>
-                    {v.resolved_by_llm && <Badge variant="secondary">LLM</Badge>}
+                  <TableCell className="text-right">{v.contract_count?.toLocaleString() ?? '—'}</TableCell>
+                  <TableCell className="text-right">
+                    {v.total_obligated != null
+                      ? `$${(v.total_obligated / 1_000_000).toFixed(1)}M`
+                      : '—'}
                   </TableCell>
                 </TableRow>
               ))}
