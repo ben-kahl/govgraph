@@ -211,12 +211,12 @@ export default function GraphPage() {
 
             {selectedNode.type === 'Contract' && (
               <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
-                {selectedNode.properties?.description && (
+                {!!selectedNode.properties?.description && (
                   <p className="text-foreground leading-snug">
                     {String(selectedNode.properties.description)}
                   </p>
                 )}
-                {selectedNode.properties?.contractId && (
+                {!!selectedNode.properties?.contractId && (
                   <p>
                     <span className="font-medium">ID:</span>{' '}
                     <span className="font-mono">{String(selectedNode.properties.contractId)}</span>
@@ -228,7 +228,7 @@ export default function GraphPage() {
                     {formatUSD(Number(selectedNode.properties.obligatedAmount))}
                   </p>
                 )}
-                {selectedNode.properties?.signedDate && (
+                {!!selectedNode.properties?.signedDate && (
                   <p>
                     <span className="font-medium">Signed:</span>{' '}
                     {String(selectedNode.properties.signedDate)}
