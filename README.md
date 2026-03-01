@@ -2,6 +2,9 @@
 
 GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed for federal procurement analysis. The system aggregates contract data from USAspending.gov, leverages Large Language Models (Amazon Bedrock) for entity resolution, and constructs a knowledge graph (Neo4j) to map complex relationships between government agencies, prime contractors, and subcontractors.
 
+### Check it out here:
+[https://main.d2680fpqajv7av.amplifyapp.com]
+
 ## Key Features
 
 * AI-Driven Entity Resolution: Utilizes Amazon Bedrock (Claude Haiku) to normalize inconsistent vendor records (e.g., merging "Lockheed," "LMT," and "Lockheed Martin Corp")

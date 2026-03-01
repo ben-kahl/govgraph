@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GraphPage from '@/app/(authed)/graph/page';
+import type { ClickedNode } from '@/components/CytoscapeGraph';
 import type { PaginatedVendors, GraphResponse } from '@/types/api';
 
 jest.mock('next/navigation', () => ({
@@ -24,13 +25,25 @@ jest.mock('@/components/CytoscapeGraph', () => ({
   }: {
     nodes: unknown[];
     edges: unknown[];
-    onNodeClick?: (n: { id: string; label: string; type: string }) => void;
+    onNodeClick?: (n: ClickedNode) => void;
   }) => (
     <div
       data-testid="cytoscape-canvas"
       data-nodes={nodes.length}
       data-edges={edges.length}
-      onClick={() => onNodeClick?.({ id: 'v1', label: 'Palantir Technologies', type: 'Vendor' })}
+      onClick={() =>
+        onNodeClick?.({
+          id: 'c1',
+          label: 'Provide IT services for the DoD',
+          type: 'Contract',
+          properties: {
+            contractId: 'MSW25FR0001234',
+            description: 'Provide IT services for the DoD',
+            obligatedAmount: 450000,
+            signedDate: '2024-03-15',
+          },
+        })
+      }
     />
   ),
 }));
@@ -72,7 +85,19 @@ const sampleGraph: GraphResponse = {
   nodes: [
     { data: { id: 'v1', label: 'Palantir Technologies', type: 'Vendor' } },
     { data: { id: 'a1', label: 'DoD', type: 'Agency' } },
-    { data: { id: 'c1', label: 'Contract-001', type: 'Contract' } },
+    {
+      data: {
+        id: 'c1',
+        label: 'Provide IT services for the DoD',
+        type: 'Contract',
+        properties: {
+          contractId: 'MSW25FR0001234',
+          description: 'Provide IT services for the DoD',
+          obligatedAmount: 450000,
+          signedDate: '2024-03-15',
+        },
+      },
+    },
   ],
   edges: [
     { data: { id: 'e1', source: 'v1', target: 'c1', label: 'AWARDED' } },
@@ -99,6 +124,13 @@ describe('GraphPage', () => {
     expect(
       screen.getByText('Search for a vendor or agency to explore the graph.')
     ).toBeInTheDocument();
+  });
+
+  it('renders layout selector with cose as default', () => {
+    render(<GraphPage />, { wrapper: makeWrapper() });
+    const select = screen.getByRole('combobox');
+    expect(select).toBeInTheDocument();
+    expect(select).toHaveValue('cose');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {
@@ -139,7 +171,6 @@ describe('GraphPage', () => {
     await user.click(screen.getByText('Palantir Technologies'));
 
     await waitFor(() => {
-      // Contract only appears in legend (not in toggle buttons), confirming legend rendered
       expect(screen.getByText('Contract')).toBeInTheDocument();
     });
   });
@@ -152,7 +183,7 @@ describe('GraphPage', () => {
     expect(screen.getByPlaceholderText('Search agencies…')).toBeInTheDocument();
   });
 
-  it('clicking a node shows the selected node panel with detail link', async () => {
+  it('clicking a contract node shows obligated amount and contract details', async () => {
     api.vendors.list.mockResolvedValue(sampleVendors);
     api.graph.vendor.mockResolvedValue(sampleGraph);
     const user = userEvent.setup();
@@ -166,7 +197,27 @@ describe('GraphPage', () => {
     await user.click(screen.getByTestId('cytoscape-canvas'));
 
     await waitFor(() => {
-      expect(screen.getByText('View detail →')).toBeInTheDocument();
+      expect(screen.getByText('$450K')).toBeInTheDocument();
+    });
+  });
+
+  it('shows vendor and awarding agency for contract node from edge data', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('cytoscape-canvas'));
+
+    await waitFor(() => {
+      // Palantir Technologies appears as both suggestion and vendor in panel
+      expect(screen.getAllByText('Palantir Technologies').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('DoD')).toBeInTheDocument();
     });
   });
 });

@@ -78,6 +78,7 @@ export interface GraphNodeData {
   id: string;
   label: string;
   type: 'Vendor' | 'Agency' | 'Contract';
+  properties?: Record<string, unknown>;
 }
 export interface GraphNode {
   data: GraphNodeData;

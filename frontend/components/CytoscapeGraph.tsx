@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useCallback, useRef } from 'react';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { Core } from 'cytoscape';
 import type { GraphNode, GraphEdge } from '@/types/api';
@@ -13,16 +13,33 @@ const CytoscapeComponent = dynamic(() => import('react-cytoscapejs'), {
   ),
 });
 
+export interface ClickedNode {
+  id: string;
+  label: string;
+  type: string;
+  properties?: Record<string, unknown>;
+}
+
 interface CytoscapeGraphProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   highlightedId?: string;
-  onNodeClick?: (node: { id: string; label: string; type: string }) => void;
+  onNodeClick?: (node: ClickedNode) => void;
+  layoutName?: string;
 }
 
-export function CytoscapeGraph({ nodes, edges, highlightedId, onNodeClick }: CytoscapeGraphProps) {
+export function CytoscapeGraph({
+  nodes,
+  edges,
+  highlightedId,
+  onNodeClick,
+  layoutName = 'cose',
+}: CytoscapeGraphProps) {
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+
+  const cyRef = useRef<Core | null>(null);
+  const prevLayoutRef = useRef(layoutName);
 
   const elements = useMemo(() => [...nodes, ...edges], [nodes, edges]);
 
@@ -82,11 +99,25 @@ export function CytoscapeGraph({ nodes, edges, highlightedId, onNodeClick }: Cyt
     [highlightedId]
   );
 
+  // Re-run layout only when layoutName explicitly changes (not on stylesheet updates)
+  useEffect(() => {
+    if (cyRef.current && prevLayoutRef.current !== layoutName) {
+      prevLayoutRef.current = layoutName;
+      cyRef.current.layout({ name: layoutName }).run();
+    }
+  }, [layoutName]);
+
   const handleCy = useCallback((cy: Core) => {
+    cyRef.current = cy;
     cy.off('tap', 'node');
     cy.on('tap', 'node', (evt) => {
       const n = evt.target;
-      onNodeClickRef.current?.({ id: n.id(), label: n.data('label'), type: n.data('type') });
+      onNodeClickRef.current?.({
+        id: n.id(),
+        label: n.data('label'),
+        type: n.data('type'),
+        properties: n.data('properties'),
+      });
     });
   }, []);
 
@@ -94,7 +125,7 @@ export function CytoscapeGraph({ nodes, edges, highlightedId, onNodeClick }: Cyt
     <CytoscapeComponent
       elements={elements}
       style={{ width: '100%', height: '100%' }}
-      layout={{ name: 'cose' }}
+      layout={{ name: layoutName }}
       stylesheet={stylesheet}
       minZoom={0.2}
       maxZoom={3}

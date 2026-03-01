@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
+import type { ClickedNode } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import type { PaginatedVendors, PaginatedAgencies } from '@/types/api';
+import type { GraphResponse } from '@/types/api';
 
 type Mode = 'vendor' | 'agency';
 
@@ -16,13 +17,47 @@ const NODE_COLORS: Record<string, string> = {
   Contract: '#f59e0b',
 };
 
+const LAYOUTS = [
+  { value: 'cose', label: 'CoSE (force-directed)' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'grid', label: 'Grid' },
+  { value: 'breadthfirst', label: 'Breadth-first' },
+  { value: 'concentric', label: 'Concentric' },
+];
+
+function formatUSD(amount: number): string {
+  if (amount >= 1e9) return `$${(amount / 1e9).toFixed(1)}B`;
+  if (amount >= 1e6) return `$${(amount / 1e6).toFixed(1)}M`;
+  if (amount >= 1e3) return `$${(amount / 1e3).toFixed(0)}K`;
+  return `$${amount.toFixed(0)}`;
+}
+
+function getContractRelated(nodeId: string, graphData: GraphResponse) {
+  const nodeMap = new Map(graphData.nodes.map((n) => [n.data.id, n.data.label]));
+  const vendorEdge = graphData.edges.find(
+    (e) => e.data.label === 'AWARDED' && e.data.target === nodeId
+  );
+  const awardingEdge = graphData.edges.find(
+    (e) => e.data.label === 'AWARDED_CONTRACT' && e.data.target === nodeId
+  );
+  const fundingEdge = graphData.edges.find(
+    (e) => e.data.label === 'FUNDED' && e.data.target === nodeId
+  );
+  return {
+    vendor: vendorEdge ? nodeMap.get(vendorEdge.data.source) : undefined,
+    awardingAgency: awardingEdge ? nodeMap.get(awardingEdge.data.source) : undefined,
+    fundingAgency: fundingEdge ? nodeMap.get(fundingEdge.data.source) : undefined,
+  };
+}
+
 export default function GraphPage() {
   const [mode, setMode] = useState<Mode>('vendor');
   const [searchText, setSearchText] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeEntity, setActiveEntity] = useState<{ id: string; name: string; type: Mode } | null>(null);
-  const [selectedNode, setSelectedNode] = useState<{ id: string; label: string; type: string } | null>(null);
+  const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
+  const [layoutName, setLayoutName] = useState('cose');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -73,10 +108,15 @@ export default function GraphPage() {
     return acc;
   }, {}) ?? {};
 
+  const contractRelated =
+    selectedNode?.type === 'Contract' && graphData
+      ? getContractRelated(selectedNode.id, graphData)
+      : null;
+
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
       {/* Sidebar */}
-      <div className="w-72 flex flex-col gap-4 shrink-0">
+      <div className="w-72 flex flex-col gap-4 shrink-0 overflow-y-auto">
         <h1 className="text-2xl font-bold">Graph Explorer</h1>
 
         {/* Type toggle */}
@@ -125,6 +165,22 @@ export default function GraphPage() {
           )}
         </div>
 
+        {/* Layout selector */}
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Layout</label>
+          <select
+            value={layoutName}
+            onChange={(e) => setLayoutName(e.target.value)}
+            className="w-full border rounded px-2 py-1 text-sm bg-background"
+          >
+            {LAYOUTS.map((l) => (
+              <option key={l.value} value={l.value}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Legend */}
         {graphData && graphData.nodes.length > 0 && (
           <div className="space-y-2">
@@ -145,13 +201,59 @@ export default function GraphPage() {
         {/* Selected node panel */}
         {selectedNode && (
           <div className="rounded-lg border p-3 space-y-2">
-            <p className="text-sm font-medium truncate">{selectedNode.label}</p>
+            <p className="text-sm font-medium leading-snug">{selectedNode.label}</p>
             <span
               className="inline-block px-2 py-0.5 rounded text-xs text-white"
               style={{ backgroundColor: NODE_COLORS[selectedNode.type] ?? '#94a3b8' }}
             >
               {selectedNode.type}
             </span>
+
+            {selectedNode.type === 'Contract' && (
+              <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
+                {!!selectedNode.properties?.description && (
+                  <p className="text-foreground leading-snug">
+                    {String(selectedNode.properties.description)}
+                  </p>
+                )}
+                {!!selectedNode.properties?.contractId && (
+                  <p>
+                    <span className="font-medium">ID:</span>{' '}
+                    <span className="font-mono">{String(selectedNode.properties.contractId)}</span>
+                  </p>
+                )}
+                {selectedNode.properties?.obligatedAmount != null && (
+                  <p>
+                    <span className="font-medium">Amount:</span>{' '}
+                    {formatUSD(Number(selectedNode.properties.obligatedAmount))}
+                  </p>
+                )}
+                {!!selectedNode.properties?.signedDate && (
+                  <p>
+                    <span className="font-medium">Signed:</span>{' '}
+                    {String(selectedNode.properties.signedDate)}
+                  </p>
+                )}
+                {contractRelated?.vendor && (
+                  <p>
+                    <span className="font-medium">Vendor:</span> {contractRelated.vendor}
+                  </p>
+                )}
+                {contractRelated?.awardingAgency && (
+                  <p>
+                    <span className="font-medium">Awarding Agency:</span>{' '}
+                    {contractRelated.awardingAgency}
+                  </p>
+                )}
+                {contractRelated?.fundingAgency && (
+                  <p>
+                    <span className="font-medium">Funding Agency:</span>{' '}
+                    {contractRelated.fundingAgency}
+                  </p>
+                )}
+              </div>
+            )}
+
             {(selectedNode.type === 'Vendor' || selectedNode.type === 'Agency') && (
               <div className="pt-1">
                 <Link
@@ -194,6 +296,7 @@ export default function GraphPage() {
             edges={graphData.edges}
             highlightedId={activeEntity?.id}
             onNodeClick={setSelectedNode}
+            layoutName={layoutName}
           />
         )}
       </div>
