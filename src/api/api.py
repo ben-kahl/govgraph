@@ -215,14 +215,41 @@ async def get_vendors(
                 )
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    "SELECT * FROM vendors WHERE canonical_name ILIKE %s OR uei = %s ORDER BY canonical_name LIMIT %s OFFSET %s",
+                    """
+                    SELECT v.*,
+                           COALESCE(cs.contract_count, 0) AS contract_count,
+                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
+                    FROM vendors v
+                    LEFT JOIN (
+                        SELECT vendor_id,
+                               COUNT(*) AS contract_count,
+                               SUM(obligated_amount) AS total_obligated
+                        FROM contracts GROUP BY vendor_id
+                    ) cs ON cs.vendor_id = v.id
+                    WHERE v.canonical_name ILIKE %s OR v.uei = %s
+                    ORDER BY cs.total_obligated DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                    """,
                     (search_query, q, size, offset),
                 )
             else:
                 cur.execute("SELECT COUNT(*) FROM vendors")
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    "SELECT * FROM vendors ORDER BY canonical_name LIMIT %s OFFSET %s",
+                    """
+                    SELECT v.*,
+                           COALESCE(cs.contract_count, 0) AS contract_count,
+                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
+                    FROM vendors v
+                    LEFT JOIN (
+                        SELECT vendor_id,
+                               COUNT(*) AS contract_count,
+                               SUM(obligated_amount) AS total_obligated
+                        FROM contracts GROUP BY vendor_id
+                    ) cs ON cs.vendor_id = v.id
+                    ORDER BY cs.total_obligated DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                    """,
                     (size, offset),
                 )
             items = cur.fetchall()
