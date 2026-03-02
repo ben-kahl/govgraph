@@ -172,7 +172,9 @@ def process_graph_result(result):
                     _add_relationship(r)
             elif isinstance(item, list):
                 for element in item:
-                    if isinstance(element, Relationship):
+                    if isinstance(element, Node):
+                        _add_node(element)
+                    elif isinstance(element, Relationship):
                         _add_relationship(element)
 
     return {"nodes": nodes, "edges": edges}
@@ -537,10 +539,21 @@ async def get_vendor_graph(
             """
             MATCH (v:Vendor {id: $id})
             OPTIONAL MATCH (v)-[ra:AWARDED]->(c:Contract)
-            OPTIONAL MATCH (a:Agency)-[rac:AWARDED_CONTRACT]->(c)
-            OPTIONAL MATCH (a2:Agency)-[rf:FUNDED]->(c)
-            WITH v, c, a, a2, ra, rac, rf LIMIT 50
-            RETURN v, c, a, a2, ra, rac, rf
+            OPTIONAL MATCH (aw_a:Agency)-[rac:AWARDED_CONTRACT]->(c)
+            OPTIONAL MATCH (fu_a:Agency)-[rf:FUNDED]->(c)
+            WITH v, c, ra, aw_a, rac, fu_a, rf LIMIT 50
+            WITH v,
+                 COLLECT(DISTINCT c)     AS contracts,
+                 COLLECT(DISTINCT ra)    AS ra_rels,
+                 COLLECT(DISTINCT aw_a)  AS aw_agencies,
+                 COLLECT(DISTINCT rac)   AS rac_rels,
+                 COLLECT(DISTINCT fu_a)  AS fu_agencies,
+                 COLLECT(DISTINCT rf)    AS rf_rels
+            OPTIONAL MATCH (v)-[rs:SUBCONTRACTED]->(sub:Vendor)
+            RETURN v, contracts, ra_rels, aw_agencies, rac_rels,
+                   fu_agencies, rf_rels,
+                   COLLECT(DISTINCT sub) AS subs,
+                   COLLECT(DISTINCT rs)  AS sub_rels
             """,
             id=str(id),
         )
@@ -565,6 +578,70 @@ async def get_agency_graph(
             id=str(id),
         )
         return process_graph_result(result)
+
+
+@app.get("/graph/overview", response_model=GraphResponse)
+async def get_overview_graph(
+    limit: int = Query(100, ge=1, le=500),
+    current_user: dict = Depends(get_current_user),
+):
+    """Aggregated vendor→agency market map for the top vendors by contract value.
+
+    Returns Vendor and Agency nodes with direct weighted edges (no Contract
+    intermediates), keeping the node count manageable for browser rendering.
+    """
+    driver = _require_neo4j()
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (v:Vendor)
+            WHERE v.totalContractValue IS NOT NULL
+            WITH v ORDER BY v.totalContractValue DESC LIMIT $limit
+            MATCH (v)-[:AWARDED]->(c:Contract)<-[:AWARDED_CONTRACT]-(a:Agency)
+            WITH v, a, COUNT(c) AS contract_count, SUM(c.obligatedAmount) AS total_value
+            RETURN v, a, contract_count, total_value
+            """,
+            limit=limit,
+        )
+
+        nodes: Dict[str, dict] = {}
+        edges: List[dict] = []
+        seen_edges: set = set()
+
+        for record in result:
+            v = record["v"]
+            a = record["a"]
+            total_value = record["total_value"] or 0.0
+
+            v_id = v.get("id") or v.element_id
+            a_id = a.get("id") or a.element_id
+
+            if v_id not in nodes:
+                nodes[v_id] = {"data": _node_to_dict(v)}
+            if a_id not in nodes:
+                nodes[a_id] = {"data": _node_to_dict(a)}
+
+            edge_key = f"{v_id}--{a_id}"
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                if total_value >= 1e9:
+                    val_label = f"${total_value / 1e9:.1f}B"
+                elif total_value >= 1e6:
+                    val_label = f"${total_value / 1e6:.1f}M"
+                elif total_value >= 1e3:
+                    val_label = f"${total_value / 1e3:.0f}K"
+                else:
+                    val_label = f"${total_value:.0f}"
+                edges.append({
+                    "data": {
+                        "id": edge_key,
+                        "source": v_id,
+                        "target": a_id,
+                        "label": val_label,
+                    }
+                })
+
+    return {"nodes": list(nodes.values()), "edges": edges}
 
 
 @app.get("/graph/vendor/{id}/supply-chain", response_model=GraphResponse)

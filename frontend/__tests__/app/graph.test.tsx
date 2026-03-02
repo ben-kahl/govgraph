@@ -13,7 +13,7 @@ jest.mock('@/lib/api', () => ({
   api: {
     vendors: { list: jest.fn() },
     agencies: { list: jest.fn() },
-    graph: { vendor: jest.fn(), agency: jest.fn() },
+    graph: { vendor: jest.fn(), agency: jest.fn(), overview: jest.fn() },
   },
 }));
 
@@ -52,7 +52,7 @@ const { api } = jest.requireMock('@/lib/api') as {
   api: {
     vendors: { list: jest.Mock };
     agencies: { list: jest.Mock };
-    graph: { vendor: jest.Mock; agency: jest.Mock };
+    graph: { vendor: jest.Mock; agency: jest.Mock; overview: jest.Mock };
   };
 };
 
@@ -108,10 +108,11 @@ const sampleGraph: GraphResponse = {
 describe('GraphPage', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('renders Vendor and Agency toggle buttons', () => {
+  it('renders Vendor, Agency and Overview toggle buttons', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
     expect(screen.getByRole('button', { name: 'Vendor' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Agency' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Overview' })).toBeInTheDocument();
   });
 
   it('renders search input with vendor placeholder by default', () => {
@@ -119,18 +120,17 @@ describe('GraphPage', () => {
     expect(screen.getByPlaceholderText('Search vendors…')).toBeInTheDocument();
   });
 
-  it('shows empty-state prompt before any search', () => {
+  it('shows empty-state prompt before any selection', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
     expect(
       screen.getByText('Search for a vendor or agency to explore the graph.')
     ).toBeInTheDocument();
   });
 
-  it('renders layout selector with cose as default', () => {
+  it('renders layout selector with fcose as default', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
     const select = screen.getByRole('combobox');
-    expect(select).toBeInTheDocument();
-    expect(select).toHaveValue('cose');
+    expect(select).toHaveValue('fcose');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {
@@ -139,12 +139,10 @@ describe('GraphPage', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
 
     await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
-    await waitFor(() => {
-      expect(screen.getByText('Palantir Technologies')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('Palantir Technologies')).toBeInTheDocument());
   });
 
-  it('loads graph after clicking a suggestion', async () => {
+  it('adds entity to loaded list and triggers graph query', async () => {
     api.vendors.list.mockResolvedValue(sampleVendors);
     api.graph.vendor.mockResolvedValue(sampleGraph);
     const user = userEvent.setup();
@@ -154,10 +152,10 @@ describe('GraphPage', () => {
     await waitFor(() => screen.getByText('Palantir Technologies'));
     await user.click(screen.getByText('Palantir Technologies'));
 
-    await waitFor(() => {
-      expect(screen.getByTestId('cytoscape-canvas')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByTestId('cytoscape-canvas')).toBeInTheDocument());
     expect(api.graph.vendor).toHaveBeenCalledWith('v1');
+    // Entity appears in the loaded chip list
+    expect(screen.getByText('Loaded (1)')).toBeInTheDocument();
   });
 
   it('shows legend with Contract type after graph loads', async () => {
@@ -170,9 +168,7 @@ describe('GraphPage', () => {
     await waitFor(() => screen.getByText('Palantir Technologies'));
     await user.click(screen.getByText('Palantir Technologies'));
 
-    await waitFor(() => {
-      expect(screen.getByText('Contract')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('Contract')).toBeInTheDocument());
   });
 
   it('switches to agency search when Agency button is clicked', async () => {
@@ -183,25 +179,26 @@ describe('GraphPage', () => {
     expect(screen.getByPlaceholderText('Search agencies…')).toBeInTheDocument();
   });
 
-  it('clicking a contract node shows obligated amount and contract details', async () => {
-    api.vendors.list.mockResolvedValue(sampleVendors);
-    api.graph.vendor.mockResolvedValue(sampleGraph);
+  it('shows Load market overview button in Overview mode', async () => {
     const user = userEvent.setup();
     render(<GraphPage />, { wrapper: makeWrapper() });
 
-    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
-    await waitFor(() => screen.getByText('Palantir Technologies'));
-    await user.click(screen.getByText('Palantir Technologies'));
-
-    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
-    await user.click(screen.getByTestId('cytoscape-canvas'));
-
-    await waitFor(() => {
-      expect(screen.getByText('$450K')).toBeInTheDocument();
-    });
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    expect(screen.getByRole('button', { name: 'Load market overview' })).toBeInTheDocument();
   });
 
-  it('shows vendor and awarding agency for contract node from edge data', async () => {
+  it('calls api.graph.overview when Load market overview is clicked', async () => {
+    api.graph.overview.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(screen.getByRole('button', { name: 'Load market overview' }));
+
+    await waitFor(() => expect(api.graph.overview).toHaveBeenCalled());
+  });
+
+  it('clicking a contract node shows obligated amount', async () => {
     api.vendors.list.mockResolvedValue(sampleVendors);
     api.graph.vendor.mockResolvedValue(sampleGraph);
     const user = userEvent.setup();
@@ -210,14 +207,24 @@ describe('GraphPage', () => {
     await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
     await waitFor(() => screen.getByText('Palantir Technologies'));
     await user.click(screen.getByText('Palantir Technologies'));
-
     await waitFor(() => screen.getByTestId('cytoscape-canvas'));
     await user.click(screen.getByTestId('cytoscape-canvas'));
 
-    await waitFor(() => {
-      // Palantir Technologies appears as both suggestion and vendor in panel
-      expect(screen.getAllByText('Palantir Technologies').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('DoD')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('$450K')).toBeInTheDocument());
+  });
+
+  it('shows awarding agency for contract node from edge data', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('cytoscape-canvas'));
+
+    await waitFor(() => expect(screen.getByText('DoD')).toBeInTheDocument());
   });
 });

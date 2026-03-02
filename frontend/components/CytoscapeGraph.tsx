@@ -2,7 +2,14 @@
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { Core } from 'cytoscape';
+import cytoscape from 'cytoscape';
+import fcose from 'cytoscape-fcose';
+import cise from 'cytoscape-cise';
 import type { GraphNode, GraphEdge } from '@/types/api';
+
+// Register layout plugins once at module load (safe — cytoscape.use is idempotent)
+cytoscape.use(fcose);
+cytoscape.use(cise);
 
 const CytoscapeComponent = dynamic(() => import('react-cytoscapejs'), {
   ssr: false,
@@ -23,7 +30,8 @@ export interface ClickedNode {
 interface CytoscapeGraphProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  highlightedId?: string;
+  /** IDs of seed nodes to highlight with a cyan border */
+  highlightedIds?: string[];
   onNodeClick?: (node: ClickedNode) => void;
   layoutName?: string;
 }
@@ -31,9 +39,9 @@ interface CytoscapeGraphProps {
 export function CytoscapeGraph({
   nodes,
   edges,
-  highlightedId,
+  highlightedIds,
   onNodeClick,
-  layoutName = 'cose',
+  layoutName = 'fcose',
 }: CytoscapeGraphProps) {
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
@@ -71,16 +79,12 @@ export function CytoscapeGraph({
         selector: 'node[type="Contract"]',
         style: { 'background-color': '#f59e0b', shape: 'rectangle' as const },
       },
-      ...(highlightedId
-        ? [
-          {
-            selector: `node[id = "${highlightedId}"]`,
-            style: {
-              'border-width': 3,
-              'border-color': '#22d3ee',
-            },
-          },
-        ]
+      // Highlight all seed nodes
+      ...(highlightedIds?.length
+        ? highlightedIds.map((id) => ({
+            selector: `node[id = "${id}"]`,
+            style: { 'border-width': 3, 'border-color': '#22d3ee' },
+          }))
         : []),
       {
         selector: 'edge',
@@ -95,11 +99,21 @@ export function CytoscapeGraph({
           'text-rotation': 'autorotate' as const,
         },
       },
+      // Subcontract edges — dashed purple to distinguish from direct awards
+      {
+        selector: 'edge[label = "SUBCONTRACTED"]',
+        style: {
+          'line-color': '#a855f7',
+          'target-arrow-color': '#a855f7',
+          'line-style': 'dashed' as const,
+        },
+      },
     ],
-    [highlightedId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [highlightedIds?.join(',')]
   );
 
-  // Re-run layout only when layoutName explicitly changes (not on stylesheet updates)
+  // Re-run layout only when layoutName explicitly changes, not on stylesheet updates
   useEffect(() => {
     if (cyRef.current && prevLayoutRef.current !== layoutName) {
       prevLayoutRef.current = layoutName;
