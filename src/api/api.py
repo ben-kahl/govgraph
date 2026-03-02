@@ -24,7 +24,7 @@ from auth import get_current_user
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -232,17 +232,51 @@ async def health():
 # Vendor endpoints
 # ---------------------------------------------------------------------------
 
+# Whitelist prevents SQL injection — order_col is never interpolated from
+# raw user input, only from this mapping.
+_VENDOR_SORT_COLS: Dict[str, str] = {
+    "canonical_name": "v.canonical_name",
+    "contract_count": "COALESCE(cs.contract_count, 0)",
+    "total_obligated": "COALESCE(cs.total_obligated, 0)",
+}
+
+_CONTRACT_JOIN = """
+    LEFT JOIN (
+        SELECT vendor_id,
+               COUNT(*) AS contract_count,
+               SUM(obligated_amount) AS total_obligated
+        FROM contracts GROUP BY vendor_id
+    ) cs ON cs.vendor_id = v.id
+"""
+
 @app.get("/vendors", response_model=PaginatedResponse)
 async def get_vendors(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("total_obligated"),
+    sort_dir: str = Query("desc"),
     current_user: dict = Depends(get_current_user),
 ):
+    if sort_by not in _VENDOR_SORT_COLS:
+        sort_by = "total_obligated"
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "desc"
+
+    order_col = _VENDOR_SORT_COLS[sort_by]
+    order_dir = "ASC" if sort_dir == "asc" else "DESC"
+    nulls_clause = "NULLS LAST" if sort_dir == "desc" else "NULLS FIRST"
+
     offset = (page - 1) * size
     conn = get_pg_connection()
     try:
         with conn.cursor() as cur:
+            select_cols = f"""
+                SELECT v.*,
+                       COALESCE(cs.contract_count, 0) AS contract_count,
+                       COALESCE(cs.total_obligated, 0.0) AS total_obligated
+                FROM vendors v {_CONTRACT_JOIN}
+            """
             if q:
                 search_query = "%" + q + "%"
                 cur.execute(
@@ -251,41 +285,17 @@ async def get_vendors(
                 )
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    """
-                    SELECT v.*,
-                           COALESCE(cs.contract_count, 0) AS contract_count,
-                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
-                    FROM vendors v
-                    LEFT JOIN (
-                        SELECT vendor_id,
-                               COUNT(*) AS contract_count,
-                               SUM(obligated_amount) AS total_obligated
-                        FROM contracts GROUP BY vendor_id
-                    ) cs ON cs.vendor_id = v.id
-                    WHERE v.canonical_name ILIKE %s OR v.uei = %s
-                    ORDER BY cs.total_obligated DESC NULLS LAST
-                    LIMIT %s OFFSET %s
-                    """,
+                    f"{select_cols} WHERE v.canonical_name ILIKE %s OR v.uei = %s"
+                    f" ORDER BY {order_col} {order_dir} {nulls_clause}"
+                    f" LIMIT %s OFFSET %s",
                     (search_query, q, size, offset),
                 )
             else:
                 cur.execute("SELECT COUNT(*) FROM vendors")
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    """
-                    SELECT v.*,
-                           COALESCE(cs.contract_count, 0) AS contract_count,
-                           COALESCE(cs.total_obligated, 0.0) AS total_obligated
-                    FROM vendors v
-                    LEFT JOIN (
-                        SELECT vendor_id,
-                               COUNT(*) AS contract_count,
-                               SUM(obligated_amount) AS total_obligated
-                        FROM contracts GROUP BY vendor_id
-                    ) cs ON cs.vendor_id = v.id
-                    ORDER BY cs.total_obligated DESC NULLS LAST
-                    LIMIT %s OFFSET %s
-                    """,
+                    f"{select_cols} ORDER BY {order_col} {order_dir} {nulls_clause}"
+                    f" LIMIT %s OFFSET %s",
                     (size, offset),
                 )
             items = cur.fetchall()
@@ -604,13 +614,14 @@ async def get_agency_graph(
 
 @app.get("/graph/overview", response_model=GraphResponse)
 async def get_overview_graph(
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(30, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
-    """Aggregated vendor→agency market map for the top vendors by contract value.
+    """Top vendors by contract value with their actual awarded contracts and agencies.
 
-    Returns Vendor and Agency nodes with direct weighted edges (no Contract
-    intermediates), keeping the node count manageable for browser rendering.
+    Uses ``limit`` to control how many top vendors (by totalContractValue) are
+    included.  Contract nodes are included so edge thickness and node sizing
+    reflect real dollar amounts rather than aggregated totals.
     """
     driver = _require_neo4j()
     with driver.session() as session:
@@ -619,52 +630,50 @@ async def get_overview_graph(
             MATCH (v:Vendor)
             WHERE v.totalContractValue IS NOT NULL
             WITH v ORDER BY v.totalContractValue DESC LIMIT $limit
-            MATCH (v)-[:AWARDED]->(c:Contract)<-[:AWARDED_CONTRACT]-(a:Agency)
-            WITH v, a, COUNT(c) AS contract_count, SUM(c.obligatedAmount) AS total_value
-            RETURN v, a, contract_count, total_value
+            MATCH (v)-[ra:AWARDED]->(c:Contract)<-[rac:AWARDED_CONTRACT]-(a:Agency)
+            RETURN v, ra, c, rac, a
+            LIMIT 300
             """,
             limit=limit,
         )
+        return process_graph_result(result)
 
-        nodes: Dict[str, dict] = {}
-        edges: List[dict] = []
-        seen_edges: set = set()
 
-        for record in result:
-            v = record["v"]
-            a = record["a"]
-            total_value = record["total_value"] or 0.0
+@app.get("/graph/explore", response_model=GraphResponse)
+async def get_explore_graph(
+    agency_limit: int = Query(8, ge=1, le=20),
+    min_amount: float = Query(5_000_000, ge=0),
+    contract_limit: int = Query(150, ge=1, le=500),
+    current_user: dict = Depends(get_current_user),
+):
+    """Broad exploration graph for new users.
 
-            v_id = v.get("id") or v.element_id
-            a_id = a.get("id") or a.element_id
-
-            if v_id not in nodes:
-                nodes[v_id] = {"data": _node_to_dict(v)}
-            if a_id not in nodes:
-                nodes[a_id] = {"data": _node_to_dict(a)}
-
-            edge_key = f"{v_id}--{a_id}"
-            if edge_key not in seen_edges:
-                seen_edges.add(edge_key)
-                if total_value >= 1e9:
-                    val_label = f"${total_value / 1e9:.1f}B"
-                elif total_value >= 1e6:
-                    val_label = f"${total_value / 1e6:.1f}M"
-                elif total_value >= 1e3:
-                    val_label = f"${total_value / 1e3:.0f}K"
-                else:
-                    val_label = f"${total_value:.0f}"
-                edges.append({
-                    "data": {
-                        "id": edge_key,
-                        "source": v_id,
-                        "target": a_id,
-                        "label": val_label,
-                        "weight": float(total_value),
-                    }
-                })
-
-    return {"nodes": list(nodes.values()), "edges": edges}
+    Returns the top parent agencies (agencies with no parent), up to five of
+    each agency's sub-agencies, and the highest-value contracts (>= min_amount)
+    those agencies awarded together with their vendors.
+    """
+    driver = _require_neo4j()
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (a:Agency)
+            WHERE NOT (a)-[:SUBAGENCY_OF]->()
+            WITH a LIMIT $agency_limit
+            OPTIONAL MATCH (sub:Agency)-[r_sub:SUBAGENCY_OF]->(a)
+            WITH a,
+                 COLLECT(DISTINCT sub)[0..5]   AS subs,
+                 COLLECT(DISTINCT r_sub)[0..5]  AS sub_rels
+            MATCH (a)-[rac:AWARDED_CONTRACT]->(c:Contract)<-[ra:AWARDED]-(v:Vendor)
+            WHERE c.obligatedAmount >= $min_amount
+            RETURN a, subs, sub_rels, rac, c, ra, v
+            ORDER BY c.obligatedAmount DESC
+            LIMIT $contract_limit
+            """,
+            agency_limit=agency_limit,
+            min_amount=min_amount,
+            contract_limit=contract_limit,
+        )
+        return process_graph_result(result)
 
 
 @app.get("/graph/vendor/{id}/supply-chain", response_model=GraphResponse)

@@ -104,6 +104,33 @@ def test_get_vendors_empty(client, mock_pg):
     assert data["items"] == []
 
 
+def test_vendors_sort_by_canonical_name(client, mock_pg):
+    """sort_by=canonical_name&sort_dir=asc must be accepted without error."""
+    mock_pg.fetchone.return_value = {"count": 0}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/vendors?sort_by=canonical_name&sort_dir=asc")
+    assert response.status_code == 200
+
+
+def test_vendors_sort_by_contract_count(client, mock_pg):
+    """sort_by=contract_count&sort_dir=desc must be accepted without error."""
+    mock_pg.fetchone.return_value = {"count": 0}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/vendors?sort_by=contract_count&sort_dir=desc")
+    assert response.status_code == 200
+
+
+def test_vendors_invalid_sort_col_falls_back_to_default(client, mock_pg):
+    """Unknown sort_by values are silently coerced to total_obligated."""
+    mock_pg.fetchone.return_value = {"count": 0}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/vendors?sort_by=INJECTION; DROP TABLE vendors; --")
+    assert response.status_code == 200
+
+
 def test_get_vendor_by_id_success(client, mock_pg):
     vendor_id = uuid4()
     mock_pg.fetchone.return_value = {
@@ -246,6 +273,35 @@ def test_agency_graph_returns_200(client, mock_neo4j):
     assert "edges" in data
 
 
+def test_explore_graph_returns_200(client, mock_neo4j):
+    """GET /graph/explore returns a graph envelope with default params."""
+    mock_neo4j.run.return_value = []
+    response = client.get("/graph/explore")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data
+    assert "edges" in data
+
+
+def test_explore_graph_cypher_includes_subagency_of(client, mock_neo4j):
+    """Explore Cypher must query SUBAGENCY_OF so sub-agencies are included."""
+    mock_neo4j.run.return_value = []
+    client.get("/graph/explore")
+    cypher = mock_neo4j.run.call_args[0][0]
+    assert "SUBAGENCY_OF" in cypher
+
+
+def test_overview_graph_returns_actual_contract_nodes(client, mock_neo4j):
+    """Overview now returns actual Contract nodes (not aggregated edges)."""
+    mock_neo4j.run.return_value = []
+    response = client.get("/graph/overview")
+    assert response.status_code == 200
+    # Cypher must reference AWARDED relationships (real contract edges)
+    cypher = mock_neo4j.run.call_args[0][0]
+    assert "AWARDED" in cypher
+    assert "Contract" in cypher
+
+
 # ---------------------------------------------------------------------------
 # Helpers for graph unit tests
 # ---------------------------------------------------------------------------
@@ -385,36 +441,49 @@ def test_process_graph_result_no_subagencies_when_none_present():
 # ---------------------------------------------------------------------------
 
 def test_graph_overview_edges_include_numeric_weight(client, mock_neo4j):
-    """Overview endpoint must expose totalValue as a numeric weight on edges."""
-    vendor = _make_node(
-        ["Vendor"],
-        {"id": "v1", "canonicalName": "ACME Corp", "totalContractValue": 1e8},
-        element_id="v1",
+    """Overview edges must carry obligatedAmount as weight from Contract end-node.
+
+    The endpoint now uses process_graph_result with actual AWARDED /
+    AWARDED_CONTRACT relationships instead of the old aggregated edge builder.
+    """
+    vendor = _make_node(["Vendor"], {"id": "v1", "canonicalName": "ACME Corp"}, element_id="v1")
+    contract = _make_node(
+        ["Contract"],
+        {"id": "c1", "obligatedAmount": 50_000_000.0, "contractId": "C-001"},
+        element_id="c1",
     )
-    agency = _make_node(
-        ["Agency"],
-        {"id": "a1", "agencyName": "DoD"},
-        element_id="a1",
-    )
-    record = _MockRecord({"v": vendor, "a": agency, "contract_count": 5, "total_value": 50_000_000.0})
+    agency = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
+    awarded = _make_rel("AWARDED", vendor, contract, element_id="r1")
+    awarded_contract = _make_rel("AWARDED_CONTRACT", agency, contract, element_id="r2")
+
+    record = _MockRecord({"ra": awarded, "rac": awarded_contract})
     mock_neo4j.run.return_value = [record]
 
     response = client.get("/graph/overview")
     assert response.status_code == 200
     data = response.json()
-    assert len(data["edges"]) == 1
-    assert data["edges"][0]["data"]["weight"] == 50_000_000.0
+    # Both AWARDED and AWARDED_CONTRACT edges should have weight from the contract
+    edge_weights = [e["data"].get("weight") for e in data["edges"]]
+    assert 50_000_000.0 in edge_weights
 
 
 def test_graph_overview_vendor_node_has_weight(client, mock_neo4j):
-    """Overview response vendor nodes should expose totalContractValue as weight."""
+    """Overview vendor nodes must expose totalContractValue as weight."""
     vendor = _make_node(
         ["Vendor"],
         {"id": "v1", "canonicalName": "ACME Corp", "totalContractValue": 2e9},
         element_id="v1",
     )
+    contract = _make_node(
+        ["Contract"],
+        {"id": "c1", "obligatedAmount": 2e9, "contractId": "C-001"},
+        element_id="c1",
+    )
     agency = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
-    record = _MockRecord({"v": vendor, "a": agency, "contract_count": 3, "total_value": 2e9})
+    awarded = _make_rel("AWARDED", vendor, contract, element_id="r1")
+    awarded_contract = _make_rel("AWARDED_CONTRACT", agency, contract, element_id="r2")
+
+    record = _MockRecord({"ra": awarded, "rac": awarded_contract})
     mock_neo4j.run.return_value = [record]
 
     response = client.get("/graph/overview")

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
 
-type Mode = 'vendor' | 'agency' | 'overview';
+type Mode = 'vendor' | 'agency' | 'overview' | 'explore';
 type EntityMode = 'vendor' | 'agency';
 
 interface SelectedEntity {
@@ -26,6 +26,7 @@ const NODE_COLORS: Record<string, string> = {
 
 const LAYOUTS = [
   { value: 'fcose', label: 'fCOSE (fast force-directed)' },
+  { value: 'cola', label: 'Cola (constraint-based)' },
   { value: 'cose', label: 'CoSE (force-directed)' },
   { value: 'circle', label: 'Circle' },
   { value: 'grid', label: 'Grid' },
@@ -75,10 +76,13 @@ export default function GraphPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedEntities, setSelectedEntities] = useState<SelectedEntity[]>([]);
   const [overviewActive, setOverviewActive] = useState(false);
+  const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
   const [layoutName, setLayoutName] = useState('fcose');
   const [nodeRepulsion, setNodeRepulsion] = useState(4500);
   const [idealEdgeLength, setIdealEdgeLength] = useState(50);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -95,18 +99,21 @@ export default function GraphPage() {
       const r = await api.agencies.list(debouncedSearch, 1, 8);
       return r.items.map((a) => ({ id: a.id, name: a.agency_name }));
     },
-    enabled: mode !== 'overview' && debouncedSearch.length >= 2,
+    enabled: (mode === 'vendor' || mode === 'agency') && debouncedSearch.length >= 2,
   });
 
-  const graphEnabled = overviewActive || selectedEntities.length > 0;
+  const graphEnabled = overviewActive || exploreActive || selectedEntities.length > 0;
   const queryKey = overviewActive
     ? ['graph', 'overview']
+    : exploreActive
+    ? ['graph', 'explore']
     : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(',')];
 
   const { data: graphData, isLoading, isError } = useQuery({
     queryKey,
     queryFn: async () => {
       if (overviewActive) return api.graph.overview();
+      if (exploreActive) return api.graph.explore();
       const results = await Promise.all(
         selectedEntities.map((e) =>
           e.type === 'vendor' ? api.graph.vendor(e.id) : api.graph.agency(e.id)
@@ -117,18 +124,49 @@ export default function GraphPage() {
     enabled: graphEnabled,
   });
 
+  // Client-side date filter: hide Contract nodes outside [dateFrom, dateTo]
+  const displayedGraphData = useMemo(() => {
+    if (!graphData || (!dateFrom && !dateTo)) return graphData;
+    const from = dateFrom ? new Date(dateFrom).getTime() : -Infinity;
+    const to = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : Infinity;
+
+    const hiddenIds = new Set(
+      graphData.nodes
+        .filter((n) => {
+          if (n.data.type !== 'Contract') return false;
+          const d = n.data.properties?.signedDate as string | undefined;
+          if (!d) return false;
+          const t = new Date(d).getTime();
+          return t < from || t > to;
+        })
+        .map((n) => n.data.id)
+    );
+
+    if (hiddenIds.size === 0) return graphData;
+    return {
+      nodes: graphData.nodes.filter((n) => !hiddenIds.has(n.data.id)),
+      edges: graphData.edges.filter(
+        (e) => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target)
+      ),
+    };
+  }, [graphData, dateFrom, dateTo]);
+
   const highlightedIds = useMemo(
-    () => (overviewActive ? [] : selectedEntities.map((e) => e.id)),
-    [overviewActive, selectedEntities]
+    () => (overviewActive || exploreActive ? [] : selectedEntities.map((e) => e.id)),
+    [overviewActive, exploreActive, selectedEntities]
   );
 
   const layoutOptions = useMemo<LayoutOptions | undefined>(
     () =>
-      layoutName === 'fcose' || layoutName === 'cose'
+      layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola'
         ? { nodeRepulsion, idealEdgeLength }
         : undefined,
     [layoutName, nodeRepulsion, idealEdgeLength]
   );
+
+  const hasContracts = graphData?.nodes.some(
+    (n) => n.data.type === 'Contract' && n.data.properties?.signedDate
+  ) ?? false;
 
   function addEntity(id: string, name: string) {
     if (selectedEntities.some((e) => e.id === id)) return;
@@ -137,6 +175,7 @@ export default function GraphPage() {
     setShowDropdown(false);
     setSelectedNode(null);
     if (overviewActive) setOverviewActive(false);
+    if (exploreActive) setExploreActive(false);
   }
 
   function removeEntity(id: string) {
@@ -150,23 +189,32 @@ export default function GraphPage() {
     setDebouncedSearch('');
     setShowDropdown(false);
     if (newMode !== 'overview') setOverviewActive(false);
+    if (newMode !== 'explore') setExploreActive(false);
   }
 
   function loadOverview() {
     setOverviewActive(true);
+    setExploreActive(false);
     setSelectedEntities([]);
     setSelectedNode(null);
   }
 
-  const legendCounts = graphData?.nodes.reduce<Record<string, number>>((acc, n) => {
+  function loadExplore() {
+    setExploreActive(true);
+    setOverviewActive(false);
+    setSelectedEntities([]);
+    setSelectedNode(null);
+  }
+
+  const legendCounts = displayedGraphData?.nodes.reduce<Record<string, number>>((acc, n) => {
     const t = n.data.type;
     acc[t] = (acc[t] ?? 0) + 1;
     return acc;
   }, {}) ?? {};
 
   const contractRelated =
-    selectedNode?.type === 'Contract' && graphData
-      ? getContractRelated(selectedNode.id, graphData)
+    selectedNode?.type === 'Contract' && displayedGraphData
+      ? getContractRelated(selectedNode.id, displayedGraphData)
       : null;
 
   return (
@@ -186,10 +234,13 @@ export default function GraphPage() {
           <Button variant={mode === 'overview' ? 'default' : 'outline'} size="sm" onClick={() => switchMode('overview')}>
             Overview
           </Button>
+          <Button variant={mode === 'explore' ? 'default' : 'outline'} size="sm" onClick={() => switchMode('explore')}>
+            Explore
+          </Button>
         </div>
 
-        {/* Search or Load Overview */}
-        {mode !== 'overview' ? (
+        {/* Search / action panel */}
+        {(mode === 'vendor' || mode === 'agency') && (
           <div className="relative">
             <Input
               placeholder={mode === 'vendor' ? 'Search vendors…' : 'Search agencies…'}
@@ -213,10 +264,32 @@ export default function GraphPage() {
               </ul>
             )}
           </div>
-        ) : (
-          <Button className="w-full" onClick={loadOverview}>
-            Load market overview
-          </Button>
+        )}
+
+        {mode === 'overview' && (
+          <div className="space-y-2">
+            <Button className="w-full" onClick={loadOverview}>
+              Load market overview
+            </Button>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Shows the top 30 vendors by total contract value, the contracts they
+              were awarded, and the agencies that funded them. Larger vendor nodes
+              and thicker edges indicate higher dollar amounts.
+            </p>
+          </div>
+        )}
+
+        {mode === 'explore' && (
+          <div className="space-y-2">
+            <Button className="w-full" onClick={loadExplore}>
+              Explore dataset
+            </Button>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              A broad starting view: the top federal agencies, their sub-agencies,
+              and the highest-value contracts ($5M+) they awarded along with the
+              winning vendors. Good for discovering patterns across the dataset.
+            </p>
+          </div>
         )}
 
         {/* Selected entity chips */}
@@ -264,23 +337,25 @@ export default function GraphPage() {
             </select>
           </div>
 
-          {(layoutName === 'fcose' || layoutName === 'cose') && (
+          {(layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') && (
             <div className="space-y-2 pl-1">
-              <div className="space-y-0.5">
-                <div className="flex justify-between">
-                  <label className="text-xs text-muted-foreground">Node Repulsion</label>
-                  <span className="text-xs text-muted-foreground">{nodeRepulsion.toLocaleString()}</span>
+              {(layoutName === 'fcose' || layoutName === 'cose') && (
+                <div className="space-y-0.5">
+                  <div className="flex justify-between">
+                    <label className="text-xs text-muted-foreground">Node Repulsion</label>
+                    <span className="text-xs text-muted-foreground">{nodeRepulsion.toLocaleString()}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={500}
+                    max={50000}
+                    step={500}
+                    value={nodeRepulsion}
+                    onChange={(e) => setNodeRepulsion(Number(e.target.value))}
+                    className="w-full accent-primary"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={500}
-                  max={50000}
-                  step={500}
-                  value={nodeRepulsion}
-                  onChange={(e) => setNodeRepulsion(Number(e.target.value))}
-                  className="w-full accent-primary"
-                />
-              </div>
+              )}
               <div className="space-y-0.5">
                 <div className="flex justify-between">
                   <label className="text-xs text-muted-foreground">Edge Length</label>
@@ -301,7 +376,7 @@ export default function GraphPage() {
         </div>
 
         {/* Legend */}
-        {graphData && graphData.nodes.length > 0 && (
+        {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">Legend</p>
             {Object.entries(legendCounts).map(([type, count]) => (
@@ -314,11 +389,50 @@ export default function GraphPage() {
                 <span className="text-muted-foreground">{count}</span>
               </div>
             ))}
-            {graphData.edges.some((e) => e.data.label === 'SUBCONTRACTED') && (
+            {displayedGraphData.edges.some((e) => e.data.label === 'SUBCONTRACTED') && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="inline-block w-6 h-0 border-t-2 border-dashed shrink-0" style={{ borderColor: '#a855f7' }} />
                 <span className="flex-1 text-xs">Subcontract</span>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Date filter — shown when graph has contracts with signedDate */}
+        {hasContracts && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">Filter by Date</p>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground block">
+                From
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  aria-label="Date from"
+                  className="mt-0.5 w-full border rounded px-2 py-1 text-xs bg-background block"
+                />
+              </label>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground block">
+                To
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  aria-label="Date to"
+                  className="mt-0.5 w-full border rounded px-2 py-1 text-xs bg-background block"
+                />
+              </label>
+            </div>
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className="text-xs text-muted-foreground hover:text-destructive"
+              >
+                Clear filter
+              </button>
             )}
           </div>
         )}
@@ -360,14 +474,14 @@ export default function GraphPage() {
               </div>
             )}
 
-            {(selectedNode.type === 'Vendor') && (
+            {selectedNode.type === 'Vendor' && (
               <div className="pt-1">
-                <Link href={`/${selectedNode.type.toLowerCase()}s/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
+                <Link href={`/vendors/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
                   View detail →
                 </Link>
               </div>
             )}
-            {(selectedNode.type === 'Agency') && (
+            {selectedNode.type === 'Agency' && (
               <div className="pt-1">
                 <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
                   View detail →
@@ -391,13 +505,13 @@ export default function GraphPage() {
         {graphEnabled && isError && (
           <div className="flex h-full items-center justify-center text-destructive">Failed to load graph.</div>
         )}
-        {graphData && graphData.nodes.length === 0 && (
+        {displayedGraphData && displayedGraphData.nodes.length === 0 && (
           <div className="flex h-full items-center justify-center text-muted-foreground">No nodes found.</div>
         )}
-        {graphData && graphData.nodes.length > 0 && (
+        {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <CytoscapeGraph
-            nodes={graphData.nodes}
-            edges={graphData.edges}
+            nodes={displayedGraphData.nodes}
+            edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
             onNodeClick={setSelectedNode}
             layoutName={layoutName}

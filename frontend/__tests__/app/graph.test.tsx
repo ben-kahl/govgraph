@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GraphPage from '@/app/(authed)/graph/page';
@@ -13,7 +13,7 @@ jest.mock('@/lib/api', () => ({
   api: {
     vendors: { list: jest.fn() },
     agencies: { list: jest.fn() },
-    graph: { vendor: jest.fn(), agency: jest.fn(), overview: jest.fn() },
+    graph: { vendor: jest.fn(), agency: jest.fn(), overview: jest.fn(), explore: jest.fn() },
   },
 }));
 
@@ -70,7 +70,7 @@ const { api } = jest.requireMock('@/lib/api') as {
   api: {
     vendors: { list: jest.Mock };
     agencies: { list: jest.Mock };
-    graph: { vendor: jest.Mock; agency: jest.Mock; overview: jest.Mock };
+    graph: { vendor: jest.Mock; agency: jest.Mock; overview: jest.Mock; explore: jest.Mock };
   };
 };
 
@@ -268,6 +268,43 @@ describe('GraphPage', () => {
     await waitFor(() => {
       const link = screen.getByRole('link', { name: 'View detail →' });
       expect(link).toHaveAttribute('href', '/vendors/detail?id=v1');
+    });
+  });
+
+  it('shows Explore button and calls api.graph.explore when clicked', async () => {
+    api.graph.explore.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole('button', { name: 'Explore' }));
+    expect(screen.getByRole('button', { name: 'Explore dataset' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Explore dataset' }));
+
+    await waitFor(() => expect(api.graph.explore).toHaveBeenCalled());
+  });
+
+  it('date filter hides contract nodes with signedDate before dateFrom', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    // sampleGraph has c1 with signedDate '2024-03-15'
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    // All 3 nodes visible initially
+    expect(screen.getByTestId('cytoscape-canvas')).toHaveAttribute('data-nodes', '3');
+
+    // Filter: from 2025-01-01 — c1's signedDate (2024-03-15) is before this
+    fireEvent.change(screen.getByLabelText('Date from'), { target: { value: '2025-01-01' } });
+
+    // c1 filtered out → 2 nodes (v1, a1), 0 edges (both connected to c1)
+    await waitFor(() => {
+      expect(screen.getByTestId('cytoscape-canvas')).toHaveAttribute('data-nodes', '2');
+      expect(screen.getByTestId('cytoscape-canvas')).toHaveAttribute('data-edges', '0');
     });
   });
 

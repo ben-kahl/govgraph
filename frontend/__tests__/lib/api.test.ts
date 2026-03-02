@@ -48,13 +48,14 @@ describe('apiFetch — Authorization header', () => {
 });
 
 describe('api.vendors', () => {
-  it('list() calls /vendors with default page and size', async () => {
+  it('list() calls /vendors with default page, size, and sort params', async () => {
     mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 1, size: 20 }));
     await api.vendors.list();
-    expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE_URL}/vendors?page=1&size=20`,
-      expect.any(Object)
-    );
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('page=1');
+    expect(url).toContain('size=20');
+    expect(url).toContain('sort_by=total_obligated');
+    expect(url).toContain('sort_dir=desc');
   });
 
   it('list() includes q param when query provided', async () => {
@@ -74,10 +75,17 @@ describe('api.vendors', () => {
   it('list() respects page and size args', async () => {
     mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 3, size: 10 }));
     await api.vendors.list(undefined, 3, 10);
-    expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE_URL}/vendors?page=3&size=10`,
-      expect.any(Object)
-    );
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('page=3');
+    expect(url).toContain('size=10');
+  });
+
+  it('list() passes custom sort params', async () => {
+    mockFetch.mockReturnValue(okJson({ items: [], total: 0, page: 1, size: 20 }));
+    await api.vendors.list(undefined, 1, 20, 'canonical_name', 'asc');
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('sort_by=canonical_name');
+    expect(url).toContain('sort_dir=asc');
   });
 
   it('getById() calls /vendors/:id', async () => {

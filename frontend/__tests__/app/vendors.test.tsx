@@ -128,9 +128,60 @@ describe('VendorsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => {
-      // api.vendors.list should have been called at least twice:
-      // once on mount (no query), once after search
-      expect(api.vendors.list).toHaveBeenCalledWith('acme', 1);
+      // api.vendors.list called with query + default sort params
+      expect(api.vendors.list).toHaveBeenCalledWith(
+        'acme', 1, 20, 'total_obligated', 'desc'
+      );
+    });
+  });
+
+  it('clicking Name header sorts by canonical_name ascending', async () => {
+    api.vendors.list.mockResolvedValue(samplePage);
+    const user = userEvent.setup();
+    render(<VendorsPage />, { wrapper: makeWrapper() });
+
+    await waitFor(() => screen.getByText('Acme Corp'));
+    await user.click(screen.getByRole('button', { name: /Name/i }));
+
+    await waitFor(() => {
+      expect(api.vendors.list).toHaveBeenCalledWith(
+        undefined, 1, 20, 'canonical_name', 'asc'
+      );
+    });
+  });
+
+  it('clicking same header twice reverses sort direction', async () => {
+    api.vendors.list.mockResolvedValue(samplePage);
+    const user = userEvent.setup();
+    render(<VendorsPage />, { wrapper: makeWrapper() });
+
+    await waitFor(() => screen.getByText('Acme Corp'));
+    // First click: sort by name ascending
+    await user.click(screen.getByRole('button', { name: /Name/i }));
+    await waitFor(() =>
+      expect(api.vendors.list).toHaveBeenCalledWith(undefined, 1, 20, 'canonical_name', 'asc')
+    );
+    // Second click: reverse to descending
+    await user.click(screen.getByRole('button', { name: /Name/i }));
+    await waitFor(() => {
+      expect(api.vendors.list).toHaveBeenCalledWith(
+        undefined, 1, 20, 'canonical_name', 'desc'
+      );
+    });
+  });
+
+  it('clicking Contracts header sorts by contract_count descending', async () => {
+    api.vendors.list.mockResolvedValue(samplePage);
+    const user = userEvent.setup();
+    render(<VendorsPage />, { wrapper: makeWrapper() });
+
+    await waitFor(() => screen.getByText('Acme Corp'));
+    await user.click(screen.getByRole('button', { name: /Contracts/i }));
+
+    await waitFor(() => {
+      expect(api.vendors.list).toHaveBeenCalledWith(
+        undefined, 1, 20, 'contract_count', 'desc'
+      );
     });
   });
 
