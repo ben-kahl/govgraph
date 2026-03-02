@@ -73,14 +73,14 @@ export function CytoscapeGraph({
       },
       ...(highlightedId
         ? [
-            {
-              selector: `node[id = "${highlightedId}"]`,
-              style: {
-                'border-width': 3,
-                'border-color': '#22d3ee',
-              },
+          {
+            selector: `node[id = "${highlightedId}"]`,
+            style: {
+              'border-width': 3,
+              'border-color': '#22d3ee',
             },
-          ]
+          },
+        ]
         : []),
       {
         selector: 'edge',

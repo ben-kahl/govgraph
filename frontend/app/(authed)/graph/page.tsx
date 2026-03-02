@@ -19,6 +19,8 @@ const NODE_COLORS: Record<string, string> = {
 
 const LAYOUTS = [
   { value: 'cose', label: 'CoSE (force-directed)' },
+  { value: 'fcose', label: 'FCoSE (modern force-directed)' },
+  { value: 'cise', label: 'cise cluster organization, avoiding edge overlap' },
   { value: 'circle', label: 'Circle' },
   { value: 'grid', label: 'Grid' },
   { value: 'breadthfirst', label: 'Breadth-first' },
