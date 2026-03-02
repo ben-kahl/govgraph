@@ -76,9 +76,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             total_resolutions += count
 
         report_lines = [
-            "GovGraph Weekly Entity Resolution Report",
-            "----------------------------------------",
-            f"Total Entities Resolved: {total_resolutions:,}",
+            "GovGraph Weekly Entity Resolution Report\n",
+            "----------------------------------------\n",
+            f"Total Entities Resolved: {total_resolutions:,}\n",
             ""
         ]
 
@@ -86,15 +86,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             percentage = (count / total_resolutions) * \
                 100 if total_resolutions > 0 else 0
             report_lines.append(f"{r_type.ljust(25)} | {
-                                count:>6,} | {percentage:>5.1f}%")
+                                count:>6,} | {percentage:>5.1f}%\n")
 
         report_lines.append("")
-        report_lines.append(
-            "To view the interactive pie chart, open AWS CloudWatch Logs Insights and run this query:")
-        report_lines.append(f"Log Group: {LOG_GROUP_NAME}")
-        report_lines.append("Query:")
-        report_lines.append(QUERY.strip())
-
         final_message = "".join(report_lines)
         logger.info("Report generated successfully.")
 

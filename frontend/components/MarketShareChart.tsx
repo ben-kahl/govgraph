@@ -8,16 +8,22 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import type { MarketShareEntry } from '@/types/api';
+import type { MarketShareEntry, AgencyMarketShareEntry } from '@/types/api';
 import { formatUSD } from '@/lib/utils';
 
-export function MarketShareChart({ data }: { data: MarketShareEntry[] }) {
+export function MarketShareChart({
+  data,
+  nameKey = 'canonical_name',
+}: {
+  data: MarketShareEntry[] | AgencyMarketShareEntry[];
+  nameKey?: string;
+}) {
   return (
     <ResponsiveContainer width="100%" height={400}>
       <BarChart data={data} margin={{ top: 8, right: 24, left: 16, bottom: 80 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis
-          dataKey="canonical_name"
+          dataKey={nameKey}
           tick={{ fontSize: 11 }}
           angle={-40}
           textAnchor="end"
