@@ -47,16 +47,16 @@ export const api = {
   },
   analytics: {
     marketShare: (limit = 25) =>
-      apiFetch<MarketShareEntry[]>(`/analytics/market-share?limit=${limit}`),
+      apiFetch<MarketShareEntry[]>(`/insights/market-share?limit=${limit}`),
     spendingOverTime: (agencyId: string, period = 'month') =>
       apiFetch<SpendingTimeSeries[]>(
-        `/analytics/agency/${agencyId}/spending-over-time?period=${period}`
+        `/insights/agency/${agencyId}/spending-over-time?period=${period}`
       ),
     awardSpikes: (z = 3) =>
-      apiFetch<AnomalyEntry[]>(`/analytics/risk/award-spikes?z_threshold=${z}`),
+      apiFetch<AnomalyEntry[]>(`/insights/risk/award-spikes?z_threshold=${z}`),
     newEntrants: (days = 90) =>
-      apiFetch<NewEntrant[]>(`/analytics/risk/new-entrants?days=${days}`),
-    soleSource: () => apiFetch<SoleSourceFlag[]>('/analytics/risk/sole-source'),
+      apiFetch<NewEntrant[]>(`/insights/risk/new-entrants?days=${days}`),
+    soleSource: () => apiFetch<SoleSourceFlag[]>('/insights/risk/sole-source'),
   },
   graph: {
     vendor: (id: string) => apiFetch<GraphResponse>(`/graph/vendor/${id}`),

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatUSD } from '@/lib/utils';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 import type { ClickedNode, LayoutOptions } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
@@ -34,12 +35,6 @@ const LAYOUTS = [
   { value: 'concentric', label: 'Concentric' },
 ];
 
-function formatUSD(amount: number): string {
-  if (amount >= 1e9) return `$${(amount / 1e9).toFixed(1)}B`;
-  if (amount >= 1e6) return `$${(amount / 1e6).toFixed(1)}M`;
-  if (amount >= 1e3) return `$${(amount / 1e3).toFixed(0)}K`;
-  return `$${amount.toFixed(0)}`;
-}
 
 function mergeGraphResponses(responses: GraphResponse[]): GraphResponse {
   const seenNodes = new Set<string>();

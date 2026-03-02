@@ -788,7 +788,7 @@ async def get_hub_vendors(
 # Analytics endpoints — PostgreSQL
 # ---------------------------------------------------------------------------
 
-@app.get("/analytics/summary")
+@app.get("/insights/summary")
 async def get_summary_stats(
     current_user: dict = Depends(get_current_user),
 ):
@@ -815,7 +815,7 @@ async def get_summary_stats(
         conn.close()
 
 
-@app.get("/analytics/market-share", response_model=List[MarketShareEntry])
+@app.get("/insights/market-share", response_model=List[MarketShareEntry])
 async def get_market_share(
     limit: int = Query(25, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
@@ -844,7 +844,7 @@ async def get_market_share(
         conn.close()
 
 
-@app.get("/analytics/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
+@app.get("/insights/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
 async def get_agency_spending_over_time(
     id: UUID,
     period: str = Query("month", pattern="^(month|quarter|year)$"),
@@ -871,7 +871,7 @@ async def get_agency_spending_over_time(
         conn.close()
 
 
-@app.get("/analytics/vendor/{id}/award-types", response_model=List[AwardTypeBreakdown])
+@app.get("/insights/vendor/{id}/award-types", response_model=List[AwardTypeBreakdown])
 async def get_vendor_award_types(
     id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -897,7 +897,7 @@ async def get_vendor_award_types(
         conn.close()
 
 
-@app.get("/analytics/agency/{id}/vendor-concentration", response_model=List[ConcentrationMetric])
+@app.get("/insights/agency/{id}/vendor-concentration", response_model=List[ConcentrationMetric])
 async def get_agency_vendor_concentration(
     id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -932,7 +932,7 @@ async def get_agency_vendor_concentration(
         conn.close()
 
 
-@app.get("/analytics/vendor/{id}/velocity", response_model=List[VelocityEntry])
+@app.get("/insights/vendor/{id}/velocity", response_model=List[VelocityEntry])
 async def get_vendor_velocity(
     id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -959,7 +959,7 @@ async def get_vendor_velocity(
         conn.close()
 
 
-@app.get("/analytics/vendor/{id}/subcontract-flow", response_model=List[SubcontractFlow])
+@app.get("/insights/vendor/{id}/subcontract-flow", response_model=List[SubcontractFlow])
 async def get_vendor_subcontract_flow(
     id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -991,7 +991,7 @@ async def get_vendor_subcontract_flow(
         conn.close()
 
 
-@app.get("/analytics/resolution-quality", response_model=List[ResolutionQualityEntry])
+@app.get("/insights/resolution-quality", response_model=List[ResolutionQualityEntry])
 async def get_resolution_quality(
     current_user: dict = Depends(get_current_user),
 ):
@@ -1015,7 +1015,7 @@ async def get_resolution_quality(
         conn.close()
 
 
-@app.get("/analytics/risk/award-spikes", response_model=List[AnomalyEntry])
+@app.get("/insights/risk/award-spikes", response_model=List[AnomalyEntry])
 async def get_award_spikes(
     z_threshold: float = Query(3.0, ge=1.0),
     current_user: dict = Depends(get_current_user),
@@ -1055,7 +1055,7 @@ async def get_award_spikes(
         conn.close()
 
 
-@app.get("/analytics/risk/new-entrants", response_model=List[NewEntrant])
+@app.get("/insights/risk/new-entrants", response_model=List[NewEntrant])
 async def get_new_entrants(
     days: int = Query(90, ge=1, le=365),
     min_value: float = Query(500000.0, ge=0),
@@ -1089,7 +1089,7 @@ async def get_new_entrants(
 # Risk endpoints — Neo4j
 # ---------------------------------------------------------------------------
 
-@app.get("/analytics/risk/sole-source", response_model=List[SoleSourceFlag])
+@app.get("/insights/risk/sole-source", response_model=List[SoleSourceFlag])
 async def get_sole_source(
     award_type: str = Query("A", pattern=r"^[A-Z]{1,2}$"),
     current_user: dict = Depends(get_current_user),
@@ -1114,7 +1114,7 @@ async def get_sole_source(
         return [dict(r) for r in result]
 
 
-@app.get("/analytics/risk/circular-subcontracts", response_model=List[CircularChain])
+@app.get("/insights/risk/circular-subcontracts", response_model=List[CircularChain])
 async def get_circular_subcontracts(
     current_user: dict = Depends(get_current_user),
 ):

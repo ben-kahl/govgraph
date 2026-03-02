@@ -88,7 +88,7 @@ describe('VendorsPage', () => {
     render(<VendorsPage />, { wrapper: makeWrapper() });
     await waitFor(() => {
       expect(screen.getByText('$5.2M')).toBeInTheDocument();
-      expect(screen.getByText('$0.8M')).toBeInTheDocument();
+      expect(screen.getByText('$800K')).toBeInTheDocument();
     });
   });
 

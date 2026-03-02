@@ -9,10 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { SpendingTimeSeries } from '@/types/api';
-
-function formatMillions(value: number) {
-  return `$${(value / 1_000_000).toFixed(1)}M`;
-}
+import { formatUSD } from '@/lib/utils';
 
 export function SpendingChart({ data }: { data: SpendingTimeSeries[] }) {
   return (
@@ -20,8 +17,8 @@ export function SpendingChart({ data }: { data: SpendingTimeSeries[] }) {
       <LineChart data={data} margin={{ top: 8, right: 24, left: 16, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-        <YAxis tickFormatter={formatMillions} />
-        <Tooltip formatter={(v: number | undefined) => v != null ? formatMillions(v) : ''} />
+        <YAxis tickFormatter={formatUSD} />
+        <Tooltip formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''} />
         <Line
           type="monotone"
           dataKey="total_obligated"

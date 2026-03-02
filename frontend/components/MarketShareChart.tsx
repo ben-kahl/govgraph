@@ -9,10 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { MarketShareEntry } from '@/types/api';
-
-function formatMillions(value: number) {
-  return `$${(value / 1_000_000).toFixed(1)}M`;
-}
+import { formatUSD } from '@/lib/utils';
 
 export function MarketShareChart({ data }: { data: MarketShareEntry[] }) {
   return (
@@ -26,8 +23,8 @@ export function MarketShareChart({ data }: { data: MarketShareEntry[] }) {
           textAnchor="end"
           interval={0}
         />
-        <YAxis tickFormatter={formatMillions} />
-        <Tooltip formatter={(v: number | undefined) => v != null ? formatMillions(v) : ''} />
+        <YAxis tickFormatter={formatUSD} />
+        <Tooltip formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''} />
         <Bar dataKey="total_obligated" fill="#3b82f6" name="Total Obligated" />
       </BarChart>
     </ResponsiveContainer>
