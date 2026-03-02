@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatUSD } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -110,7 +111,7 @@ export default function VendorsPage() {
                   <TableCell className="text-right">{v.contract_count?.toLocaleString() ?? '—'}</TableCell>
                   <TableCell className="text-right">
                     {v.total_obligated != null
-                      ? `$${(v.total_obligated / 1_000_000).toFixed(1)}M`
+                      ? formatUSD(v.total_obligated)
                       : '—'}
                   </TableCell>
                 </TableRow>

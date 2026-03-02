@@ -131,7 +131,7 @@ describe('api.analytics', () => {
     mockFetch.mockReturnValue(okJson([]));
     await api.analytics.marketShare(10);
     expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE_URL}/analytics/market-share?limit=10`,
+      `${BASE_URL}/insights/market-share?limit=10`,
       expect.any(Object)
     );
   });
@@ -140,7 +140,7 @@ describe('api.analytics', () => {
     mockFetch.mockReturnValue(okJson([]));
     await api.analytics.spendingOverTime('a1', 'quarter');
     expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE_URL}/analytics/agency/a1/spending-over-time?period=quarter`,
+      `${BASE_URL}/insights/agency/a1/spending-over-time?period=quarter`,
       expect.any(Object)
     );
   });

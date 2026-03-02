@@ -169,7 +169,7 @@ def test_market_share(client, mock_pg):
         }
     ]
 
-    response = client.get("/analytics/market-share")
+    response = client.get("/insights/market-share")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -189,7 +189,7 @@ def test_spending_over_time(client, mock_pg):
     ]
 
     agency_id = uuid4()
-    response = client.get(f"/analytics/agency/{agency_id}/spending-over-time")
+    response = client.get(f"/insights/agency/{agency_id}/spending-over-time")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -207,7 +207,7 @@ def test_award_spikes(client, mock_pg):
         }
     ]
 
-    response = client.get("/analytics/risk/award-spikes?z_threshold=3")
+    response = client.get("/insights/risk/award-spikes?z_threshold=3")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -224,7 +224,7 @@ def test_new_entrants(client, mock_pg):
         }
     ]
 
-    response = client.get("/analytics/risk/new-entrants")
+    response = client.get("/insights/risk/new-entrants")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1

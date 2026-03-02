@@ -10,9 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatUSD } from '@/lib/utils';
 
 function formatDollars(v: number) {
-  return `$${(v / 1_000_000).toFixed(2)}M`;
+  return formatUSD(v);
 }
 
 export default function RiskPage() {
