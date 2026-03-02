@@ -4,12 +4,10 @@ import dynamic from 'next/dynamic';
 import type { Core } from 'cytoscape';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
-import cise from 'cytoscape-cise';
 import type { GraphNode, GraphEdge } from '@/types/api';
 
-// Register layout plugins once at module load (safe — cytoscape.use is idempotent)
+// Register layout plugin once at module load (idempotent)
 cytoscape.use(fcose);
-cytoscape.use(cise);
 
 const CytoscapeComponent = dynamic(() => import('react-cytoscapejs'), {
   ssr: false,
@@ -27,6 +25,11 @@ export interface ClickedNode {
   properties?: Record<string, unknown>;
 }
 
+export interface LayoutOptions {
+  nodeRepulsion?: number;
+  idealEdgeLength?: number;
+}
+
 interface CytoscapeGraphProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -34,6 +37,7 @@ interface CytoscapeGraphProps {
   highlightedIds?: string[];
   onNodeClick?: (node: ClickedNode) => void;
   layoutName?: string;
+  layoutOptions?: LayoutOptions;
 }
 
 export function CytoscapeGraph({
@@ -42,17 +46,28 @@ export function CytoscapeGraph({
   highlightedIds,
   onNodeClick,
   layoutName = 'fcose',
+  layoutOptions,
 }: CytoscapeGraphProps) {
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
 
   const cyRef = useRef<Core | null>(null);
-  const prevLayoutRef = useRef(layoutName);
+  const prevLayoutKeyRef = useRef('');
 
   const elements = useMemo(() => [...nodes, ...edges], [nodes, edges]);
 
+  const layoutConfig = useMemo(() => {
+    const cfg: Record<string, unknown> = { name: layoutName };
+    if ((layoutName === 'fcose' || layoutName === 'cose') && layoutOptions) {
+      if (layoutOptions.nodeRepulsion !== undefined) cfg.nodeRepulsion = layoutOptions.nodeRepulsion;
+      if (layoutOptions.idealEdgeLength !== undefined) cfg.idealEdgeLength = layoutOptions.idealEdgeLength;
+    }
+    return cfg;
+  }, [layoutName, layoutOptions]);
+
   const stylesheet = useMemo(
     () => [
+      // --- Base node style ---
       {
         selector: 'node',
         style: {
@@ -79,16 +94,40 @@ export function CytoscapeGraph({
         selector: 'node[type="Contract"]',
         style: { 'background-color': '#f59e0b', shape: 'rectangle' as const },
       },
-      // Highlight all seed nodes
+
+      // --- Vendor node sizing by total contract value ---
+      {
+        selector: 'node[type="Vendor"][weight >= 10000000]',      // $10M+
+        style: { width: 70, height: 70 },
+      },
+      {
+        selector: 'node[type="Vendor"][weight >= 100000000]',     // $100M+
+        style: { width: 80, height: 80 },
+      },
+      {
+        selector: 'node[type="Vendor"][weight >= 1000000000]',    // $1B+
+        style: { width: 95, height: 95 },
+      },
+
+      // --- Agency hierarchy: sub-agencies rendered smaller ---
+      {
+        selector: 'node[type="Agency"][?isSubagency]',
+        style: { width: 50, height: 50 },
+      },
+
+      // --- Highlighted seed nodes ---
       ...(highlightedIds?.length
         ? highlightedIds.map((id) => ({
             selector: `node[id = "${id}"]`,
             style: { 'border-width': 3, 'border-color': '#22d3ee' },
           }))
         : []),
+
+      // --- Base edge style ---
       {
         selector: 'edge',
         style: {
+          width: 1,
           'line-color': '#94a3b8',
           'target-arrow-color': '#94a3b8',
           'target-arrow-shape': 'triangle' as const,
@@ -99,7 +138,26 @@ export function CytoscapeGraph({
           'text-rotation': 'autorotate' as const,
         },
       },
-      // Subcontract edges — dashed purple to distinguish from direct awards
+
+      // --- Edge width by obligated amount (stepped thresholds) ---
+      {
+        selector: 'edge[weight >= 100000]',     // $100K+
+        style: { width: 2 },
+      },
+      {
+        selector: 'edge[weight >= 1000000]',    // $1M+
+        style: { width: 3 },
+      },
+      {
+        selector: 'edge[weight >= 10000000]',   // $10M+
+        style: { width: 5 },
+      },
+      {
+        selector: 'edge[weight >= 100000000]',  // $100M+
+        style: { width: 7 },
+      },
+
+      // --- Subcontract edges — dashed purple ---
       {
         selector: 'edge[label = "SUBCONTRACTED"]',
         style: {
@@ -113,13 +171,15 @@ export function CytoscapeGraph({
     [highlightedIds?.join(',')]
   );
 
-  // Re-run layout only when layoutName explicitly changes, not on stylesheet updates
+  // Re-run layout when layoutName or layoutOptions change
   useEffect(() => {
-    if (cyRef.current && prevLayoutRef.current !== layoutName) {
-      prevLayoutRef.current = layoutName;
-      cyRef.current.layout({ name: layoutName }).run();
+    const key = JSON.stringify(layoutConfig);
+    if (cyRef.current && key !== prevLayoutKeyRef.current) {
+      prevLayoutKeyRef.current = key;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cyRef.current.layout(layoutConfig as any).run();
     }
-  }, [layoutName]);
+  }, [layoutConfig]);
 
   const handleCy = useCallback((cy: Core) => {
     cyRef.current = cy;
@@ -139,7 +199,8 @@ export function CytoscapeGraph({
     <CytoscapeComponent
       elements={elements}
       style={{ width: '100%', height: '100%' }}
-      layout={{ name: layoutName }}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      layout={layoutConfig as any}
       stylesheet={stylesheet}
       minZoom={0.2}
       maxZoom={3}

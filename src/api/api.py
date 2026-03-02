@@ -122,18 +122,29 @@ def _node_to_dict(item: Node) -> dict:
     label = raw_label[:38] + "…" if len(raw_label) > 38 else raw_label
 
     properties: Dict[str, Any] = {}
+    weight = None
     if node_type == "Contract":
         for key in ("obligatedAmount", "contractId", "description", "signedDate", "awardType"):
             val = item.get(key)
             if val is not None:
                 properties[key] = str(val) if key == "signedDate" else val
+        amount = item.get("obligatedAmount")
+        if amount is not None:
+            weight = float(amount)
+    elif node_type == "Vendor":
+        val = item.get("totalContractValue")
+        if val is not None:
+            weight = float(val)
 
-    return {
+    result: Dict[str, Any] = {
         "id": node_id,
         "label": label,
         "type": node_type,
         "properties": properties,
     }
+    if weight is not None:
+        result["weight"] = weight
+    return result
 
 
 def process_graph_result(result):
@@ -150,14 +161,18 @@ def process_graph_result(result):
     def _add_relationship(item: Relationship):
         for n in [item.start_node, item.end_node]:
             _add_node(n)
-        edges.append({
-            "data": {
-                "id": item.element_id,
-                "source": item.start_node.get("id") or item.start_node.element_id,
-                "target": item.end_node.get("id") or item.end_node.element_id,
-                "label": item.type,
-            }
-        })
+        edge_data: Dict[str, Any] = {
+            "id": item.element_id,
+            "source": item.start_node.get("id") or item.start_node.element_id,
+            "target": item.end_node.get("id") or item.end_node.element_id,
+            "label": item.type,
+        }
+        # Propagate obligated amount from Contract end-node onto the edge for visual weighting
+        if item.type in ("AWARDED", "AWARDED_CONTRACT", "FUNDED"):
+            amount = item.end_node.get("obligatedAmount")
+            if amount is not None:
+                edge_data["weight"] = float(amount)
+        edges.append({"data": edge_data})
 
     for record in result:
         for item in record.values():
@@ -176,6 +191,13 @@ def process_graph_result(result):
                         _add_node(element)
                     elif isinstance(element, Relationship):
                         _add_relationship(element)
+
+    # Mark sub-agencies: any Agency that is a source of a SUBAGENCY_OF edge
+    subagency_ids = {e["data"]["source"] for e in edges if e["data"]["label"] == "SUBAGENCY_OF"}
+    if subagency_ids:
+        for node in nodes:
+            if node["data"]["type"] == "Agency" and node["data"]["id"] in subagency_ids:
+                node["data"]["isSubagency"] = True
 
     return {"nodes": nodes, "edges": edges}
 
@@ -638,6 +660,7 @@ async def get_overview_graph(
                         "source": v_id,
                         "target": a_id,
                         "label": val_label,
+                        "weight": float(total_value),
                     }
                 })
 

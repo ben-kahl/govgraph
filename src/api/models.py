@@ -76,6 +76,8 @@ class GraphNodeData(BaseModel):
     label: str
     type: str  # 'vendor', 'agency', 'contract'
     properties: Dict[str, Any] = {}
+    weight: Optional[float] = None      # totalContractValue (Vendor) or obligatedAmount (Contract)
+    isSubagency: Optional[bool] = None  # True when Agency is a child of another Agency
 
 
 class GraphNode(BaseModel):
@@ -88,6 +90,7 @@ class GraphEdgeData(BaseModel):
     target: str
     label: str
     properties: Dict[str, Any] = {}
+    weight: Optional[float] = None  # obligatedAmount for contract edges, totalValue for overview edges
 
 
 class GraphEdge(BaseModel):

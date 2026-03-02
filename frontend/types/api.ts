@@ -79,6 +79,10 @@ export interface GraphNodeData {
   label: string;
   type: 'Vendor' | 'Agency' | 'Contract';
   properties?: Record<string, unknown>;
+  /** totalContractValue for Vendor, obligatedAmount for Contract */
+  weight?: number;
+  /** True when this Agency is a child of another Agency */
+  isSubagency?: boolean;
 }
 export interface GraphNode {
   data: GraphNodeData;
@@ -89,6 +93,8 @@ export interface GraphEdgeData {
   source: string;
   target: string;
   label: string;
+  /** obligatedAmount for contract edges; totalValue for overview edges */
+  weight?: number;
 }
 export interface GraphEdge {
   data: GraphEdgeData;

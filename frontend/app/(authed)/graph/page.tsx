@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
-import type { ClickedNode } from '@/components/CytoscapeGraph';
+import type { ClickedNode, LayoutOptions } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
@@ -26,7 +26,6 @@ const NODE_COLORS: Record<string, string> = {
 
 const LAYOUTS = [
   { value: 'fcose', label: 'fCOSE (fast force-directed)' },
-  { value: 'cise', label: 'CiSE (clustered circular)' },
   { value: 'cose', label: 'CoSE (force-directed)' },
   { value: 'circle', label: 'Circle' },
   { value: 'grid', label: 'Grid' },
@@ -78,6 +77,8 @@ export default function GraphPage() {
   const [overviewActive, setOverviewActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
   const [layoutName, setLayoutName] = useState('fcose');
+  const [nodeRepulsion, setNodeRepulsion] = useState(4500);
+  const [idealEdgeLength, setIdealEdgeLength] = useState(50);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -119,6 +120,14 @@ export default function GraphPage() {
   const highlightedIds = useMemo(
     () => (overviewActive ? [] : selectedEntities.map((e) => e.id)),
     [overviewActive, selectedEntities]
+  );
+
+  const layoutOptions = useMemo<LayoutOptions | undefined>(
+    () =>
+      layoutName === 'fcose' || layoutName === 'cose'
+        ? { nodeRepulsion, idealEdgeLength }
+        : undefined,
+    [layoutName, nodeRepulsion, idealEdgeLength]
   );
 
   function addEntity(id: string, name: string) {
@@ -240,18 +249,55 @@ export default function GraphPage() {
           </div>
         )}
 
-        {/* Layout selector */}
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Layout</label>
-          <select
-            value={layoutName}
-            onChange={(e) => setLayoutName(e.target.value)}
-            className="w-full border rounded px-2 py-1 text-sm bg-background"
-          >
-            {LAYOUTS.map((l) => (
-              <option key={l.value} value={l.value}>{l.label}</option>
-            ))}
-          </select>
+        {/* Layout selector + options */}
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Layout</label>
+            <select
+              value={layoutName}
+              onChange={(e) => setLayoutName(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-sm bg-background"
+            >
+              {LAYOUTS.map((l) => (
+                <option key={l.value} value={l.value}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {(layoutName === 'fcose' || layoutName === 'cose') && (
+            <div className="space-y-2 pl-1">
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Node Repulsion</label>
+                  <span className="text-xs text-muted-foreground">{nodeRepulsion.toLocaleString()}</span>
+                </div>
+                <input
+                  type="range"
+                  min={500}
+                  max={50000}
+                  step={500}
+                  value={nodeRepulsion}
+                  onChange={(e) => setNodeRepulsion(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Edge Length</label>
+                  <span className="text-xs text-muted-foreground">{idealEdgeLength}</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={300}
+                  step={5}
+                  value={idealEdgeLength}
+                  onChange={(e) => setIdealEdgeLength(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Legend */}
@@ -348,6 +394,7 @@ export default function GraphPage() {
             highlightedIds={highlightedIds}
             onNodeClick={setSelectedNode}
             layoutName={layoutName}
+            layoutOptions={layoutOptions}
           />
         )}
       </div>
