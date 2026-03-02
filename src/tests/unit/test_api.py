@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
+from neo4j.graph import Node, Relationship
 
 # Set environment variables before importing app
 os.environ["DB_HOST"] = "localhost"
@@ -232,3 +233,192 @@ def test_graph_path(client, mock_neo4j):
     call_args = mock_neo4j.run.call_args
     cypher = call_args[0][0]
     assert "shortestPath" in cypher
+
+
+def test_agency_graph_returns_200(client, mock_neo4j):
+    """GET /graph/agency/{id} exists and returns the expected envelope."""
+    mock_neo4j.run.return_value = []
+    agency_id = uuid4()
+    response = client.get(f"/graph/agency/{agency_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data
+    assert "edges" in data
+
+
+# ---------------------------------------------------------------------------
+# Helpers for graph unit tests
+# ---------------------------------------------------------------------------
+
+def _make_node(labels, properties, element_id="el-1"):
+    """Create a MagicMock that passes isinstance(x, Node) checks."""
+    node = MagicMock(spec=Node)
+    node.labels = frozenset(labels)
+    node.element_id = element_id
+    node.get.side_effect = lambda k, default=None: properties.get(k, default)
+    return node
+
+
+def _make_rel(rel_type, start_node, end_node, element_id="rel-1"):
+    """Create a MagicMock that passes isinstance(x, Relationship) checks."""
+    rel = MagicMock(spec=Relationship)
+    rel.type = rel_type
+    rel.start_node = start_node
+    rel.end_node = end_node
+    rel.element_id = element_id
+    return rel
+
+
+class _MockRecord:
+    """Minimal Neo4j record substitute; supports both [] and .values()."""
+    def __init__(self, data):
+        self._data = data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def values(self):
+        return list(self._data.values())
+
+
+# ---------------------------------------------------------------------------
+# _node_to_dict: weight propagation
+# ---------------------------------------------------------------------------
+
+def test_node_to_dict_vendor_weight_from_total_contract_value():
+    from src.api.api import _node_to_dict
+    node = _make_node(["Vendor"], {"id": "v1", "canonicalName": "ACME Corp", "totalContractValue": 5_000_000_000})
+    result = _node_to_dict(node)
+    assert result["type"] == "Vendor"
+    assert result["weight"] == 5_000_000_000.0
+
+
+def test_node_to_dict_vendor_no_weight_when_missing():
+    from src.api.api import _node_to_dict
+    node = _make_node(["Vendor"], {"id": "v1", "canonicalName": "ACME Corp"})
+    result = _node_to_dict(node)
+    assert "weight" not in result
+
+
+def test_node_to_dict_contract_weight_from_obligated_amount():
+    from src.api.api import _node_to_dict
+    node = _make_node(["Contract"], {"id": "c1", "obligatedAmount": 1_500_000, "contractId": "CONT-001"})
+    result = _node_to_dict(node)
+    assert result["type"] == "Contract"
+    assert result["weight"] == 1_500_000.0
+    # obligatedAmount also present in properties for the detail panel
+    assert result["properties"]["obligatedAmount"] == 1_500_000
+
+
+def test_node_to_dict_agency_no_weight():
+    from src.api.api import _node_to_dict
+    node = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"})
+    result = _node_to_dict(node)
+    assert result["type"] == "Agency"
+    assert "weight" not in result
+
+
+# ---------------------------------------------------------------------------
+# process_graph_result: edge weight + sub-agency marking
+# ---------------------------------------------------------------------------
+
+def test_process_graph_result_awarded_edge_carries_weight():
+    """AWARDED edges should carry obligatedAmount from the Contract end-node."""
+    from src.api.api import process_graph_result
+    vendor = _make_node(["Vendor"], {"id": "v1", "canonicalName": "ACME"}, element_id="v1")
+    contract = _make_node(
+        ["Contract"],
+        {"id": "c1", "obligatedAmount": 2_000_000, "contractId": "C-001"},
+        element_id="c1",
+    )
+    awarded = _make_rel("AWARDED", vendor, contract, element_id="r1")
+
+    record = _MockRecord({"rel": awarded})
+    result = process_graph_result([record])
+
+    assert len(result["edges"]) == 1
+    assert result["edges"][0]["data"]["weight"] == 2_000_000.0
+
+
+def test_process_graph_result_subcontracted_edge_has_no_weight():
+    """SUBCONTRACTED edges (vendor→vendor) should not carry a weight."""
+    from src.api.api import process_graph_result
+    prime = _make_node(["Vendor"], {"id": "v1", "canonicalName": "Prime"}, element_id="v1")
+    sub = _make_node(["Vendor"], {"id": "v2", "canonicalName": "Sub"}, element_id="v2")
+    rel = _make_rel("SUBCONTRACTED", prime, sub, element_id="r1")
+
+    record = _MockRecord({"rel": rel})
+    result = process_graph_result([record])
+
+    assert len(result["edges"]) == 1
+    assert "weight" not in result["edges"][0]["data"]
+
+
+def test_process_graph_result_marks_subagencies():
+    """Agencies that are sources of SUBAGENCY_OF edges must be marked isSubagency."""
+    from src.api.api import process_graph_result
+    parent = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
+    child = _make_node(["Agency"], {"id": "a2", "agencyName": "Army"}, element_id="a2")
+    rel = _make_rel("SUBAGENCY_OF", child, parent, element_id="r1")
+
+    record = _MockRecord({"parent": parent, "child": child, "rel": rel})
+    result = process_graph_result([record])
+
+    nodes_by_id = {n["data"]["id"]: n["data"] for n in result["nodes"]}
+    assert nodes_by_id["a2"].get("isSubagency") is True
+    assert nodes_by_id["a1"].get("isSubagency") is None
+
+
+def test_process_graph_result_no_subagencies_when_none_present():
+    """No isSubagency flag set when graph has no SUBAGENCY_OF relationships."""
+    from src.api.api import process_graph_result
+    agency = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
+
+    record = _MockRecord({"agency": agency})
+    result = process_graph_result([record])
+
+    assert result["nodes"][0]["data"].get("isSubagency") is None
+
+
+# ---------------------------------------------------------------------------
+# /graph/overview: edge weight in response
+# ---------------------------------------------------------------------------
+
+def test_graph_overview_edges_include_numeric_weight(client, mock_neo4j):
+    """Overview endpoint must expose totalValue as a numeric weight on edges."""
+    vendor = _make_node(
+        ["Vendor"],
+        {"id": "v1", "canonicalName": "ACME Corp", "totalContractValue": 1e8},
+        element_id="v1",
+    )
+    agency = _make_node(
+        ["Agency"],
+        {"id": "a1", "agencyName": "DoD"},
+        element_id="a1",
+    )
+    record = _MockRecord({"v": vendor, "a": agency, "contract_count": 5, "total_value": 50_000_000.0})
+    mock_neo4j.run.return_value = [record]
+
+    response = client.get("/graph/overview")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["edges"]) == 1
+    assert data["edges"][0]["data"]["weight"] == 50_000_000.0
+
+
+def test_graph_overview_vendor_node_has_weight(client, mock_neo4j):
+    """Overview response vendor nodes should expose totalContractValue as weight."""
+    vendor = _make_node(
+        ["Vendor"],
+        {"id": "v1", "canonicalName": "ACME Corp", "totalContractValue": 2e9},
+        element_id="v1",
+    )
+    agency = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
+    record = _MockRecord({"v": vendor, "a": agency, "contract_count": 3, "total_value": 2e9})
+    mock_neo4j.run.return_value = [record]
+
+    response = client.get("/graph/overview")
+    assert response.status_code == 200
+    data = response.json()
+    vendor_node = next(n for n in data["nodes"] if n["data"]["type"] == "Vendor")
+    assert vendor_node["data"]["weight"] == 2_000_000_000.0
