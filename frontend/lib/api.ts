@@ -4,6 +4,8 @@ import type {
   Vendor,
   PaginatedAgencies,
   Agency,
+  SummaryStats,
+  AgencyMarketShareEntry,
   MarketShareEntry,
   SpendingTimeSeries,
   AnomalyEntry,
@@ -46,8 +48,11 @@ export const api = {
     getById: (id: string) => apiFetch<Agency>(`/agencies/${id}`),
   },
   analytics: {
+    summary: () => apiFetch<SummaryStats>('/insights/summary'),
     marketShare: (limit = 25) =>
       apiFetch<MarketShareEntry[]>(`/insights/market-share?limit=${limit}`),
+    agencyMarketShare: (limit = 10) =>
+      apiFetch<AgencyMarketShareEntry[]>(`/insights/agency-market-share?limit=${limit}`),
     spendingOverTime: (agencyId: string, period = 'month') =>
       apiFetch<SpendingTimeSeries[]>(
         `/insights/agency/${agencyId}/spending-over-time?period=${period}`

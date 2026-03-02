@@ -39,6 +39,20 @@ export interface PaginatedAgencies {
   items: Agency[];
 }
 
+export interface SummaryStats {
+  total_vendors: number;
+  total_agencies: number;
+  total_contracts: number;
+  total_obligated_amount: number;
+}
+
+export interface AgencyMarketShareEntry {
+  agency_name: string;
+  award_count: number;
+  total_obligated: number;
+  market_share_pct: number;
+}
+
 export interface MarketShareEntry {
   canonical_name: string;
   award_count: number;

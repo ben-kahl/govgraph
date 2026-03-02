@@ -844,6 +844,47 @@ async def get_market_share(
         conn.close()
 
 
+@app.get("/insights/agency-market-share")
+async def get_agency_market_share(
+    limit: int = Query(10, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    """Top agencies by total obligated contract value.
+
+    Returns agencies ranked by total obligated amount with award counts and
+    percentage share of total spend.
+
+    Args:
+        limit: Maximum number of agencies to return (1–100, default 10).
+        current_user: Injected JWT payload from Cognito.
+
+    Returns:
+        List of dicts with agency_name, award_count, total_obligated, market_share_pct.
+    """
+    conn = get_pg_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    a.agency_name,
+                    COUNT(c.id)                                                AS award_count,
+                    SUM(c.obligated_amount)                                    AS total_obligated,
+                    SUM(c.obligated_amount) * 100.0
+                        / NULLIF(SUM(SUM(c.obligated_amount)) OVER (), 0)     AS market_share_pct
+                FROM agencies a
+                JOIN contracts c ON c.agency_id = a.id
+                GROUP BY a.id, a.agency_name
+                ORDER BY total_obligated DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
 @app.get("/insights/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
 async def get_agency_spending_over_time(
     id: UUID,
