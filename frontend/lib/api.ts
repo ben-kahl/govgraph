@@ -32,9 +32,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   vendors: {
-    list: (q?: string, page = 1, size = 20) =>
+    list: (q?: string, page = 1, size = 20, sortBy = 'total_obligated', sortDir = 'desc') =>
       apiFetch<PaginatedVendors>(
-        `/vendors?page=${page}&size=${size}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+        `/vendors?page=${page}&size=${size}&sort_by=${sortBy}&sort_dir=${sortDir}${q ? `&q=${encodeURIComponent(q)}` : ''}`
       ),
     getById: (id: string) => apiFetch<Vendor>(`/vendors/${id}`),
   },
@@ -61,7 +61,8 @@ export const api = {
   graph: {
     vendor: (id: string) => apiFetch<GraphResponse>(`/graph/vendor/${id}`),
     agency: (id: string) => apiFetch<GraphResponse>(`/graph/agency/${id}`),
-    overview: (limit = 100) => apiFetch<GraphResponse>(`/graph/overview?limit=${limit}`),
+    overview: (limit = 30) => apiFetch<GraphResponse>(`/graph/overview?limit=${limit}`),
+    explore: () => apiFetch<GraphResponse>('/graph/explore'),
     path: (from: string, to: string) =>
       apiFetch<GraphResponse>(`/graph/path?from=${from}&to=${to}`),
   },

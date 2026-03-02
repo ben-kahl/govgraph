@@ -4,10 +4,12 @@ import dynamic from 'next/dynamic';
 import type { Core } from 'cytoscape';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
+import cola from 'cytoscape-cola';
 import type { GraphNode, GraphEdge } from '@/types/api';
 
-// Register layout plugin once at module load (idempotent)
+// Register layout plugins once at module load (idempotent)
 cytoscape.use(fcose);
+cytoscape.use(cola);
 
 const CytoscapeComponent = dynamic(() => import('react-cytoscapejs'), {
   ssr: false,
@@ -58,9 +60,15 @@ export function CytoscapeGraph({
 
   const layoutConfig = useMemo(() => {
     const cfg: Record<string, unknown> = { name: layoutName };
-    if ((layoutName === 'fcose' || layoutName === 'cose') && layoutOptions) {
-      if (layoutOptions.nodeRepulsion !== undefined) cfg.nodeRepulsion = layoutOptions.nodeRepulsion;
-      if (layoutOptions.idealEdgeLength !== undefined) cfg.idealEdgeLength = layoutOptions.idealEdgeLength;
+    if (layoutName === 'fcose' || layoutName === 'cose') {
+      if (layoutOptions?.nodeRepulsion !== undefined) cfg.nodeRepulsion = layoutOptions.nodeRepulsion;
+      if (layoutOptions?.idealEdgeLength !== undefined) cfg.idealEdgeLength = layoutOptions.idealEdgeLength;
+    } else if (layoutName === 'cola') {
+      // Cola uses edgeLength instead of idealEdgeLength; animate:false avoids
+      // re-layout thrash on stylesheet updates
+      if (layoutOptions?.idealEdgeLength !== undefined) cfg.edgeLength = layoutOptions.idealEdgeLength;
+      cfg.animate = false;
+      cfg.maxSimulationTime = 3000;
     }
     return cfg;
   }, [layoutName, layoutOptions]);
