@@ -360,9 +360,16 @@ export default function GraphPage() {
               </div>
             )}
 
-            {(selectedNode.type === 'Vendor' || selectedNode.type === 'Agency') && (
+            {(selectedNode.type === 'Vendor') && (
               <div className="pt-1">
                 <Link href={`/${selectedNode.type.toLowerCase()}s/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
+                  View detail →
+                </Link>
+              </div>
+            )}
+            {(selectedNode.type === 'Agency') && (
+              <div className="pt-1">
+                <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
                   View detail →
                 </Link>
               </div>
