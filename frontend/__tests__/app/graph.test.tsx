@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GraphPage from '@/app/(authed)/graph/page';
 import type { ClickedNode } from '@/components/CytoscapeGraph';
-import type { PaginatedVendors, GraphResponse } from '@/types/api';
+import type { PaginatedVendors, PaginatedAgencies, GraphResponse } from '@/types/api';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -27,6 +27,9 @@ jest.mock('@/components/CytoscapeGraph', () => ({
     edges: unknown[];
     onNodeClick?: (n: ClickedNode) => void;
   }) => (
+    // Clicking the outer div fires a Contract node click (preserves existing tests).
+    // The inner buttons fire Vendor/Agency clicks with stopPropagation so they
+    // don't also trigger the Contract click.
     <div
       data-testid="cytoscape-canvas"
       data-nodes={nodes.length}
@@ -44,7 +47,22 @@ jest.mock('@/components/CytoscapeGraph', () => ({
           },
         })
       }
-    />
+    >
+      <button
+        data-testid="click-vendor-node"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeClick?.({ id: 'v1', label: 'Palantir Technologies', type: 'Vendor' });
+        }}
+      />
+      <button
+        data-testid="click-agency-node"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeClick?.({ id: 'a1', label: 'DoD', type: 'Agency' });
+        }}
+      />
+    </div>
   ),
 }));
 
@@ -62,6 +80,13 @@ function makeWrapper() {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
 }
+
+const sampleAgencies: PaginatedAgencies = {
+  total: 1,
+  page: 1,
+  size: 8,
+  items: [{ id: 'a1', agency_name: 'DoD', agency_code: 'DOD' }],
+};
 
 const sampleVendors: PaginatedVendors = {
   total: 1,
@@ -226,5 +251,42 @@ describe('GraphPage', () => {
     await user.click(screen.getByTestId('cytoscape-canvas'));
 
     await waitFor(() => expect(screen.getByText('DoD')).toBeInTheDocument());
+  });
+
+  it('vendor node shows "View detail" link pointing to /vendors/detail', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('click-vendor-node'));
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'View detail →' });
+      expect(link).toHaveAttribute('href', '/vendors/detail?id=v1');
+    });
+  });
+
+  it('agency node shows "View detail" link pointing to /agencies/detail', async () => {
+    api.agencies.list.mockResolvedValue(sampleAgencies);
+    api.graph.agency.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole('button', { name: 'Agency' }));
+    await user.type(screen.getByPlaceholderText('Search agencies…'), 'dod');
+    await waitFor(() => screen.getByText('DoD'));
+    await user.click(screen.getByText('DoD'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('click-agency-node'));
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'View detail →' });
+      expect(link).toHaveAttribute('href', '/agencies/detail?id=a1');
+    });
   });
 });
