@@ -12,9 +12,6 @@ import {
 } from '@/components/ui/table';
 import { formatUSD } from '@/lib/utils';
 
-function formatDollars(v: number) {
-  return formatUSD(v);
-}
 
 export default function RiskPage() {
   const { data: spikes, isLoading: spikesLoading } = useQuery({
@@ -59,8 +56,8 @@ export default function RiskPage() {
                   <TableRow key={i}>
                     <TableCell>{s.canonical_name}</TableCell>
                     <TableCell className="font-mono text-xs">{s.contract_id}</TableCell>
-                    <TableCell>{formatDollars(s.obligated_amount)}</TableCell>
-                    <TableCell>{formatDollars(s.avg_amount)}</TableCell>
+                    <TableCell>{formatUSD(s.obligated_amount)}</TableCell>
+                    <TableCell>{formatUSD(s.avg_amount)}</TableCell>
                     <TableCell className="font-mono">{s.z_score.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
@@ -93,7 +90,7 @@ export default function RiskPage() {
                     <TableCell>{e.canonical_name}</TableCell>
                     <TableCell>{e.first_award}</TableCell>
                     <TableCell>{e.award_count}</TableCell>
-                    <TableCell>{formatDollars(e.total_value)}</TableCell>
+                    <TableCell>{formatUSD(e.total_value)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -125,7 +122,7 @@ export default function RiskPage() {
                     <TableCell>{s.agency_name}</TableCell>
                     <TableCell>{s.sole_vendor}</TableCell>
                     <TableCell>{s.contracts}</TableCell>
-                    <TableCell>{formatDollars(s.total_spend)}</TableCell>
+                    <TableCell>{formatUSD(s.total_spend)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
