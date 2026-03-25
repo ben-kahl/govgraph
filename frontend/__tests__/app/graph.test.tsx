@@ -178,13 +178,12 @@ describe('GraphPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders layout selector with dagre as default', () => {
+  it('renders layout selector with fcose as default', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
-    // Two comboboxes when dagre is active (layout + direction); pick the one with layout options
     const selects = screen.getAllByRole('combobox');
-    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'dagre');
+    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'fcose');
     expect(layoutSelect).toBeDefined();
-    expect(layoutSelect).toHaveValue('dagre');
+    expect(layoutSelect).toHaveValue('fcose');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {
@@ -207,7 +206,7 @@ describe('GraphPage', () => {
     await user.click(screen.getByText('Palantir Technologies'));
 
     await waitFor(() => expect(screen.getByTestId('cytoscape-canvas')).toBeInTheDocument());
-    expect(api.graph.vendor).toHaveBeenCalledWith('v1');
+    expect(api.graph.vendor).toHaveBeenCalledWith('v1', 500);
     // Entity appears in the loaded chip list
     expect(screen.getByText('Loaded (1)')).toBeInTheDocument();
   });

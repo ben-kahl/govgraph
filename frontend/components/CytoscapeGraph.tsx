@@ -120,13 +120,7 @@ export function CytoscapeGraph({
       },
       {
         selector: 'node[type="Agency"]',
-        style: {
-          'background-color': '#22c55e',
-          shape: 'triangle' as const,
-          // Triangle text sits low — shift label up to stay inside
-          'text-valign': 'center' as const,
-          'text-margin-y': 6,
-        },
+        style: { 'background-color': '#22c55e' },
       },
       {
         selector: 'node[type="Contract"]',

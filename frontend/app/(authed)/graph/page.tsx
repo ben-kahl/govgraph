@@ -83,12 +83,13 @@ export default function GraphPage() {
   const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<ClickedEdge | null>(null);
-  const [layoutName, setLayoutName] = useState('dagre');
+  const [layoutName, setLayoutName] = useState('fcose');
   const [nodeRepulsion, setNodeRepulsion] = useState(8000);
   const [idealEdgeLength, setIdealEdgeLength] = useState(100);
   const [dagreRankDir, setDagreRankDir] = useState<'TB' | 'LR'>('TB');
   const [dagreRankSep, setDagreRankSep] = useState(80);
   const [dagreNodeSep, setDagreNodeSep] = useState(40);
+  const [contractLimit, setContractLimit] = useState(500);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -118,7 +119,7 @@ export default function GraphPage() {
     ? ['graph', 'overview']
     : exploreActive
     ? ['graph', 'explore']
-    : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(',')];
+    : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(','), contractLimit];
 
   const { data: graphData, isLoading, isError } = useQuery({
     queryKey,
@@ -127,7 +128,9 @@ export default function GraphPage() {
       if (exploreActive) return api.graph.explore();
       const results = await Promise.all(
         selectedEntities.map((e) =>
-          e.type === 'vendor' ? api.graph.vendor(e.id) : api.graph.agency(e.id)
+          e.type === 'vendor'
+            ? api.graph.vendor(e.id, contractLimit)
+            : api.graph.agency(e.id, contractLimit)
         )
       );
       return mergeGraphResponses(results);
@@ -351,6 +354,23 @@ export default function GraphPage() {
           </div>
         )}
 
+        {/* Contract limit */}
+        {(mode === 'vendor' || mode === 'agency') && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Contract limit</label>
+            <select
+              value={contractLimit}
+              onChange={(e) => setContractLimit(Number(e.target.value))}
+              className="w-full border rounded px-2 py-1 text-sm bg-background"
+            >
+              <option value={200}>Top 200 by value</option>
+              <option value={500}>Top 500 by value</option>
+              <option value={1000}>Top 1,000 by value</option>
+              <option value={5000}>Top 5,000 by value</option>
+            </select>
+          </div>
+        )}
+
         {/* Layout selector + options */}
         <div className="space-y-2">
           <div className="space-y-1">
@@ -454,6 +474,11 @@ export default function GraphPage() {
         {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">Nodes</p>
+            {(mode === 'vendor' || mode === 'agency') && !overviewActive && !exploreActive && (
+              <p className="text-xs text-muted-foreground italic">
+                Showing top {contractLimit.toLocaleString()} contracts by value
+              </p>
+            )}
             {Object.entries(legendCounts).map(([type, count]) => (
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
