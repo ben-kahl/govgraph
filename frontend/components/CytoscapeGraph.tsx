@@ -5,11 +5,13 @@ import type { Core } from 'cytoscape';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import cola from 'cytoscape-cola';
+import dagre from 'cytoscape-dagre';
 import type { GraphNode, GraphEdge } from '@/types/api';
 
 // Register layout plugins once at module load (idempotent)
 cytoscape.use(fcose);
 cytoscape.use(cola);
+cytoscape.use(dagre);
 
 const CytoscapeComponent = dynamic(() => import('react-cytoscapejs'), {
   ssr: false,
@@ -36,8 +38,13 @@ export interface ClickedEdge {
 }
 
 export interface LayoutOptions {
+  // force-directed (fcose / cose / cola)
   nodeRepulsion?: number;
   idealEdgeLength?: number;
+  // dagre
+  dagreRankDir?: 'TB' | 'LR';
+  dagreRankSep?: number;
+  dagreNodeSep?: number;
 }
 
 interface CytoscapeGraphProps {
@@ -81,6 +88,11 @@ export function CytoscapeGraph({
       if (layoutOptions?.idealEdgeLength !== undefined) cfg.edgeLength = layoutOptions.idealEdgeLength;
       cfg.animate = false;
       cfg.maxSimulationTime = 3000;
+    } else if (layoutName === 'dagre') {
+      cfg.rankDir = layoutOptions?.dagreRankDir ?? 'TB';
+      cfg.rankSep = layoutOptions?.dagreRankSep ?? 80;
+      cfg.nodeSep = layoutOptions?.dagreNodeSep ?? 40;
+      cfg.animate = false;
     }
     return cfg;
   }, [layoutName, layoutOptions]);
@@ -91,14 +103,14 @@ export function CytoscapeGraph({
       {
         selector: 'node',
         style: {
-          width: 65,
-          height: 65,
+          width: 60,
+          height: 60,
           'font-size': '10px',
           color: '#fff',
           'text-valign': 'center' as const,
           'text-halign': 'center' as const,
           'text-wrap': 'wrap' as const,
-          'text-max-width': '55px',
+          'text-max-width': '50px',
           label: 'data(label)',
         },
       },
@@ -108,11 +120,24 @@ export function CytoscapeGraph({
       },
       {
         selector: 'node[type="Agency"]',
-        style: { 'background-color': '#22c55e' },
+        style: {
+          'background-color': '#22c55e',
+          shape: 'triangle' as const,
+          // Triangle text sits low — shift label up to stay inside
+          'text-valign': 'center' as const,
+          'text-margin-y': 6,
+        },
       },
       {
         selector: 'node[type="Contract"]',
-        style: { 'background-color': '#f59e0b', shape: 'rectangle' as const },
+        style: {
+          'background-color': '#f59e0b',
+          shape: 'rectangle' as const,
+          width: 45,
+          height: 45,
+          'font-size': '8px',
+          'text-max-width': '38px',
+        },
       },
 
       // --- Vendor node sizing by total contract value ---
@@ -132,7 +157,7 @@ export function CytoscapeGraph({
       // --- Agency hierarchy: sub-agencies rendered smaller ---
       {
         selector: 'node[type="Agency"][?isSubagency]',
-        style: { width: 50, height: 50 },
+        style: { width: 45, height: 45, 'font-size': '9px' },
       },
 
       // --- Highlighted seed nodes ---
