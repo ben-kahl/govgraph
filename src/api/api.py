@@ -447,9 +447,9 @@ async def get_agency_stats(
                     COUNT(*) as total_awards,
                     SUM(obligated_amount) as total_obligated_amount
                 FROM contracts
-                WHERE agency_id = %s
+                WHERE (agency_id = %s OR awarding_sub_agency_id = %s)
                 """,
-                (str(id),),
+                (str(id), str(id)),
             )
             basic = cur.fetchone()
 
@@ -458,12 +458,12 @@ async def get_agency_stats(
                 SELECT v.canonical_name, SUM(c.obligated_amount) as amount, COUNT(*) as count
                 FROM contracts c
                 JOIN vendors v ON c.vendor_id = v.id
-                WHERE c.agency_id = %s
+                WHERE (c.agency_id = %s OR c.awarding_sub_agency_id = %s)
                 GROUP BY v.canonical_name
                 ORDER BY amount DESC
                 LIMIT 5
                 """,
-                (str(id),),
+                (str(id), str(id)),
             )
             vendors = cur.fetchall()
 
@@ -471,11 +471,11 @@ async def get_agency_stats(
                 """
                 SELECT EXTRACT(YEAR FROM signed_date)::int as year, SUM(obligated_amount) as amount
                 FROM contracts
-                WHERE agency_id = %s
+                WHERE (agency_id = %s OR awarding_sub_agency_id = %s)
                 GROUP BY year
                 ORDER BY year DESC
                 """,
-                (str(id),),
+                (str(id), str(id)),
             )
             history = cur.fetchall()
 
@@ -901,11 +901,11 @@ async def get_agency_spending_over_time(
                     COUNT(c.id)                   AS contract_count,
                     SUM(c.obligated_amount)        AS total_obligated
                 FROM contracts c
-                WHERE c.agency_id = %s
+                WHERE (c.agency_id = %s OR c.awarding_sub_agency_id = %s)
                 GROUP BY period
                 ORDER BY period
                 """,
-                (period, str(id)),
+                (period, str(id), str(id)),
             )
             return cur.fetchall()
     finally:
@@ -1075,6 +1075,7 @@ async def get_award_spikes(
                     GROUP BY vendor_id
                 )
                 SELECT
+                    v.id AS vendor_id,
                     v.canonical_name,
                     c.contract_id,
                     c.obligated_amount,
@@ -1108,6 +1109,7 @@ async def get_new_entrants(
             cur.execute(
                 """
                 SELECT
+                    v.id AS vendor_id,
                     v.canonical_name,
                     MIN(c.signed_date) AS first_award,
                     COUNT(c.id)        AS award_count,

@@ -67,6 +67,7 @@ export interface SpendingTimeSeries {
 }
 
 export interface AnomalyEntry {
+  vendor_id: string;
   canonical_name: string;
   contract_id: string;
   obligated_amount: number;
@@ -75,6 +76,7 @@ export interface AnomalyEntry {
 }
 
 export interface NewEntrant {
+  vendor_id: string;
   canonical_name: string;
   first_award: string;
   award_count: number;

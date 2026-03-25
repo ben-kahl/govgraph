@@ -32,6 +32,7 @@ function makeWrapper() {
 
 const sampleSpikes: AnomalyEntry[] = [
   {
+    vendor_id: 'vendor-uuid-001',
     canonical_name: 'Acme Corp',
     contract_id: 'C001',
     obligated_amount: 9_000_000,
@@ -42,6 +43,7 @@ const sampleSpikes: AnomalyEntry[] = [
 
 const sampleEntrants: NewEntrant[] = [
   {
+    vendor_id: 'vendor-uuid-002',
     canonical_name: 'NewCo Inc',
     first_award: '2024-01-15',
     award_count: 3,
@@ -132,6 +134,69 @@ describe('RiskPage', () => {
       expect(screen.getByText('NASA')).toBeInTheDocument();
       expect(screen.getByText('SpaceTech Ltd')).toBeInTheDocument();
       expect(screen.getByText('8')).toBeInTheDocument();
+    });
+  });
+
+  it('award spike vendor name links to vendor detail page', async () => {
+    api.analytics.awardSpikes.mockResolvedValue(sampleSpikes);
+    api.analytics.newEntrants.mockResolvedValue([]);
+    api.analytics.soleSource.mockResolvedValue([]);
+    render(<RiskPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'Acme Corp' });
+      expect(link).toHaveAttribute('href', '/vendors/detail?id=vendor-uuid-001');
+    });
+  });
+
+  it('new entrant vendor name links to vendor detail page', async () => {
+    api.analytics.awardSpikes.mockResolvedValue([]);
+    api.analytics.newEntrants.mockResolvedValue(sampleEntrants);
+    api.analytics.soleSource.mockResolvedValue([]);
+    render(<RiskPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'NewCo Inc' });
+      expect(link).toHaveAttribute('href', '/vendors/detail?id=vendor-uuid-002');
+    });
+  });
+
+  it('sole-source vendor name links to vendors search page', async () => {
+    api.analytics.awardSpikes.mockResolvedValue([]);
+    api.analytics.newEntrants.mockResolvedValue([]);
+    api.analytics.soleSource.mockResolvedValue(sampleSoleSource);
+    render(<RiskPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'SpaceTech Ltd' });
+      expect(link).toHaveAttribute('href', '/vendors?q=SpaceTech%20Ltd');
+    });
+  });
+
+  it('does not show pagination controls when results fit on one page', async () => {
+    api.analytics.awardSpikes.mockResolvedValue(sampleSpikes);
+    api.analytics.newEntrants.mockResolvedValue([]);
+    api.analytics.soleSource.mockResolvedValue([]);
+    render(<RiskPage />, { wrapper: makeWrapper() });
+    await waitFor(() => screen.getByText('Acme Corp'));
+    expect(screen.queryByRole('button', { name: 'Previous' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+  });
+
+  it('shows pagination controls when results exceed page size', async () => {
+    const manySpikes: AnomalyEntry[] = Array.from({ length: 11 }, (_, i) => ({
+      vendor_id: `vendor-uuid-${i}`,
+      canonical_name: `Vendor ${i}`,
+      contract_id: `C${i}`,
+      obligated_amount: 9_000_000,
+      avg_amount: 1_000_000,
+      z_score: 4.0,
+    }));
+    api.analytics.awardSpikes.mockResolvedValue(manySpikes);
+    api.analytics.newEntrants.mockResolvedValue([]);
+    api.analytics.soleSource.mockResolvedValue([]);
+    render(<RiskPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+      expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
     });
   });
 });

@@ -126,9 +126,9 @@ export function CytoscapeGraph({
       // --- Highlighted seed nodes ---
       ...(highlightedIds?.length
         ? highlightedIds.map((id) => ({
-            selector: `node[id = "${id}"]`,
-            style: { 'border-width': 3, 'border-color': '#22d3ee' },
-          }))
+          selector: `node[id = "${id}"]`,
+          style: { 'border-width': 3, 'border-color': '#22d3ee' },
+        }))
         : []),
 
       // --- Base edge style ---
@@ -142,7 +142,7 @@ export function CytoscapeGraph({
           'curve-style': 'bezier' as const,
           label: 'data(label)',
           'font-size': '8px',
-          color: '#94a3b8',
+          color: 'black',
           'text-rotation': 'autorotate' as const,
         },
       },

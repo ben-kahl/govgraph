@@ -134,7 +134,8 @@ module "weekly_report_lambda" {
   runtime       = "python3.12"
   timeout       = 60
 
-  source_path = "${path.module}/../src/monitoring"
+  source_path              = "${path.module}/../src/monitoring"
+  recreate_missing_package = false
 
   environment_variables = {
     SNS_TOPIC_ARN  = aws_sns_topic.weekly_report.arn

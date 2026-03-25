@@ -308,6 +308,31 @@ describe('GraphPage', () => {
     });
   });
 
+  it('agency dropdown shows agency code in parentheses', async () => {
+    api.agencies.list.mockResolvedValue(sampleAgencies);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole('button', { name: 'Agency' }));
+    await user.type(screen.getByPlaceholderText('Search agencies…'), 'dod');
+    await waitFor(() => expect(screen.getByText('DoD (DOD)')).toBeInTheDocument());
+  });
+
+  it('agency dropdown omits parentheses when agency_code is null', async () => {
+    const noCode: PaginatedAgencies = {
+      total: 1, page: 1, size: 8,
+      items: [{ id: 'a2', agency_name: 'Unknown Agency', agency_code: null }],
+    };
+    api.agencies.list.mockResolvedValue(noCode);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole('button', { name: 'Agency' }));
+    await user.type(screen.getByPlaceholderText('Search agencies…'), 'unk');
+    await waitFor(() => expect(screen.getByText('Unknown Agency')).toBeInTheDocument());
+    expect(screen.queryByText(/Unknown Agency \(/)).not.toBeInTheDocument();
+  });
+
   it('agency node shows "View detail" link pointing to /agencies/detail', async () => {
     api.agencies.list.mockResolvedValue(sampleAgencies);
     api.graph.agency.mockResolvedValue(sampleGraph);
@@ -316,8 +341,8 @@ describe('GraphPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Agency' }));
     await user.type(screen.getByPlaceholderText('Search agencies…'), 'dod');
-    await waitFor(() => screen.getByText('DoD'));
-    await user.click(screen.getByText('DoD'));
+    await waitFor(() => screen.getByText('DoD (DOD)'));
+    await user.click(screen.getByText('DoD (DOD)'));
     await waitFor(() => screen.getByTestId('cytoscape-canvas'));
     await user.click(screen.getByTestId('click-agency-node'));
 

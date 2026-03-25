@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
@@ -23,9 +24,11 @@ function SortIndicator({ col, sortBy, sortDir }: { col: SortCol; sortBy: SortCol
   return <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
 }
 
-export default function VendorsPage() {
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
+function VendorsPageInner() {
+  const searchParams = useSearchParams();
+  const initialQ = searchParams.get('q') ?? '';
+  const [search, setSearch] = useState(initialQ);
+  const [query, setQuery] = useState(initialQ);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortCol>('total_obligated');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -140,5 +143,13 @@ export default function VendorsPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function VendorsPage() {
+  return (
+    <Suspense>
+      <VendorsPageInner />
+    </Suspense>
   );
 }
