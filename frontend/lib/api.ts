@@ -68,6 +68,8 @@ export const api = {
       apiFetch<GraphResponse>(`/graph/vendor/${id}?limit=${limit}`),
     agency: (id: string, limit = 1000) =>
       apiFetch<GraphResponse>(`/graph/agency/${id}?limit=${limit}`),
+    contract: (id: string) =>
+      apiFetch<GraphResponse>(`/graph/contract/${id}`),
     overview: (limit = 30) => apiFetch<GraphResponse>(`/graph/overview?limit=${limit}`),
     explore: () => apiFetch<GraphResponse>('/graph/explore'),
     path: (from: string, to: string) =>
