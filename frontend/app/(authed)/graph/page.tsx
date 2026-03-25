@@ -92,7 +92,10 @@ export default function GraphPage() {
         return r.items.map((v) => ({ id: v.id, name: v.canonical_name }));
       }
       const r = await api.agencies.list(debouncedSearch, 1, 8);
-      return r.items.map((a) => ({ id: a.id, name: a.agency_name }));
+      return r.items.map((a) => ({
+        id: a.id,
+        name: a.agency_code ? `${a.agency_name} (${a.agency_code})` : a.agency_name,
+      }));
     },
     enabled: (mode === 'vendor' || mode === 'agency') && debouncedSearch.length >= 2,
   });
