@@ -178,10 +178,13 @@ describe('GraphPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders layout selector with fcose as default', () => {
+  it('renders layout selector with dagre as default', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
-    const select = screen.getByRole('combobox');
-    expect(select).toHaveValue('fcose');
+    // Two comboboxes when dagre is active (layout + direction); pick the one with layout options
+    const selects = screen.getAllByRole('combobox');
+    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'dagre');
+    expect(layoutSelect).toBeDefined();
+    expect(layoutSelect).toHaveValue('dagre');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {

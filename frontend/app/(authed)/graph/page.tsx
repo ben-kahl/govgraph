@@ -34,12 +34,13 @@ const EDGE_COLORS: Record<string, string> = {
 };
 
 const LAYOUTS = [
-  { value: 'fcose', label: 'fCOSE (fast force-directed)' },
+  { value: 'dagre', label: 'Dagre (hierarchical)' },
+  { value: 'fcose', label: 'fCOSE (force-directed)' },
   { value: 'cola', label: 'Cola (constraint-based)' },
+  { value: 'breadthfirst', label: 'Breadth-first' },
   { value: 'cose', label: 'CoSE (force-directed)' },
   { value: 'circle', label: 'Circle' },
   { value: 'grid', label: 'Grid' },
-  { value: 'breadthfirst', label: 'Breadth-first' },
   { value: 'concentric', label: 'Concentric' },
 ];
 
@@ -82,9 +83,12 @@ export default function GraphPage() {
   const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<ClickedEdge | null>(null);
-  const [layoutName, setLayoutName] = useState('fcose');
-  const [nodeRepulsion, setNodeRepulsion] = useState(4500);
-  const [idealEdgeLength, setIdealEdgeLength] = useState(50);
+  const [layoutName, setLayoutName] = useState('dagre');
+  const [nodeRepulsion, setNodeRepulsion] = useState(8000);
+  const [idealEdgeLength, setIdealEdgeLength] = useState(100);
+  const [dagreRankDir, setDagreRankDir] = useState<'TB' | 'LR'>('TB');
+  const [dagreRankSep, setDagreRankSep] = useState(80);
+  const [dagreNodeSep, setDagreNodeSep] = useState(40);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -163,13 +167,15 @@ export default function GraphPage() {
     [overviewActive, exploreActive, selectedEntities]
   );
 
-  const layoutOptions = useMemo<LayoutOptions | undefined>(
-    () =>
-      layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola'
-        ? { nodeRepulsion, idealEdgeLength }
-        : undefined,
-    [layoutName, nodeRepulsion, idealEdgeLength]
-  );
+  const layoutOptions = useMemo<LayoutOptions | undefined>(() => {
+    if (layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') {
+      return { nodeRepulsion, idealEdgeLength };
+    }
+    if (layoutName === 'dagre') {
+      return { dagreRankDir, dagreRankSep, dagreNodeSep };
+    }
+    return undefined;
+  }, [layoutName, nodeRepulsion, idealEdgeLength, dagreRankDir, dagreRankSep, dagreNodeSep]);
 
   const hasContracts = graphData?.nodes.some(
     (n) => n.data.type === 'Contract' && n.data.properties?.signedDate
@@ -359,6 +365,52 @@ export default function GraphPage() {
               ))}
             </select>
           </div>
+
+          {layoutName === 'dagre' && (
+            <div className="space-y-2 pl-1">
+              <div className="space-y-0.5">
+                <label className="text-xs text-muted-foreground">Direction</label>
+                <select
+                  value={dagreRankDir}
+                  onChange={(e) => setDagreRankDir(e.target.value as 'TB' | 'LR')}
+                  className="w-full border rounded px-2 py-1 text-sm bg-background"
+                >
+                  <option value="TB">Top → Bottom</option>
+                  <option value="LR">Left → Right</option>
+                </select>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Rank Spacing</label>
+                  <span className="text-xs text-muted-foreground">{dagreRankSep}</span>
+                </div>
+                <input
+                  type="range"
+                  min={20}
+                  max={300}
+                  step={10}
+                  value={dagreRankSep}
+                  onChange={(e) => setDagreRankSep(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Node Spacing</label>
+                  <span className="text-xs text-muted-foreground">{dagreNodeSep}</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={200}
+                  step={10}
+                  value={dagreNodeSep}
+                  onChange={(e) => setDagreNodeSep(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+          )}
 
           {(layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') && (
             <div className="space-y-2 pl-1">
