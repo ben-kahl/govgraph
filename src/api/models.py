@@ -149,6 +149,7 @@ class ResolutionQualityEntry(BaseModel):
 
 
 class AnomalyEntry(BaseModel):
+    vendor_id: UUID
     canonical_name: str
     contract_id: str
     obligated_amount: float
@@ -157,6 +158,7 @@ class AnomalyEntry(BaseModel):
 
 
 class NewEntrant(BaseModel):
+    vendor_id: UUID
     canonical_name: str
     first_award: date
     award_count: int

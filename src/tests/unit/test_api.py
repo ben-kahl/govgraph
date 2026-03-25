@@ -199,6 +199,7 @@ def test_spending_over_time(client, mock_pg):
 def test_award_spikes(client, mock_pg):
     mock_pg.fetchall.return_value = [
         {
+            "vendor_id": "a1b2c3d4-0000-0000-0000-000000000001",
             "canonical_name": "BIG VENDOR",
             "contract_id": "C-001",
             "obligated_amount": 9999999.0,
@@ -212,11 +213,13 @@ def test_award_spikes(client, mock_pg):
     data = response.json()
     assert len(data) == 1
     assert data[0]["z_score"] == 4.5
+    assert data[0]["vendor_id"] == "a1b2c3d4-0000-0000-0000-000000000001"
 
 
 def test_new_entrants(client, mock_pg):
     mock_pg.fetchall.return_value = [
         {
+            "vendor_id": "a1b2c3d4-0000-0000-0000-000000000002",
             "canonical_name": "STARTUP LLC",
             "first_award": "2026-01-15",
             "award_count": 2,
@@ -229,6 +232,7 @@ def test_new_entrants(client, mock_pg):
     data = response.json()
     assert len(data) == 1
     assert data[0]["canonical_name"] == "STARTUP LLC"
+    assert data[0]["vendor_id"] == "a1b2c3d4-0000-0000-0000-000000000002"
 
 
 # ---------------------------------------------------------------------------

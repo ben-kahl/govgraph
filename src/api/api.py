@@ -1075,6 +1075,7 @@ async def get_award_spikes(
                     GROUP BY vendor_id
                 )
                 SELECT
+                    v.id AS vendor_id,
                     v.canonical_name,
                     c.contract_id,
                     c.obligated_amount,
@@ -1108,6 +1109,7 @@ async def get_new_entrants(
             cur.execute(
                 """
                 SELECT
+                    v.id AS vendor_id,
                     v.canonical_name,
                     MIN(c.signed_date) AS first_award,
                     COUNT(c.id)        AS award_count,
