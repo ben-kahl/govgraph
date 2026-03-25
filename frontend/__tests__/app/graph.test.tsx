@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GraphPage from '@/app/(authed)/graph/page';
-import type { ClickedNode } from '@/components/CytoscapeGraph';
+import type { ClickedNode, ClickedEdge } from '@/components/CytoscapeGraph';
 import type { PaginatedVendors, PaginatedAgencies, GraphResponse } from '@/types/api';
 
 jest.mock('next/navigation', () => ({
@@ -22,10 +22,12 @@ jest.mock('@/components/CytoscapeGraph', () => ({
     nodes,
     edges,
     onNodeClick,
+    onEdgeClick,
   }: {
     nodes: unknown[];
     edges: unknown[];
     onNodeClick?: (n: ClickedNode) => void;
+    onEdgeClick?: (e: ClickedEdge) => void;
   }) => (
     // Clicking the outer div fires a Contract node click (preserves existing tests).
     // The inner buttons fire Vendor/Agency clicks with stopPropagation so they
@@ -44,6 +46,7 @@ jest.mock('@/components/CytoscapeGraph', () => ({
             description: 'Provide IT services for the DoD',
             obligatedAmount: 450000,
             signedDate: '2024-03-15',
+            awardType: 'A',
           },
         })
       }
@@ -52,14 +55,37 @@ jest.mock('@/components/CytoscapeGraph', () => ({
         data-testid="click-vendor-node"
         onClick={(e) => {
           e.stopPropagation();
-          onNodeClick?.({ id: 'v1', label: 'Palantir Technologies', type: 'Vendor' });
+          onNodeClick?.({
+            id: 'v1',
+            label: 'Palantir Technolog…',
+            type: 'Vendor',
+            properties: { canonicalName: 'Palantir Technologies', totalContractValue: 9_500_000 },
+          });
         }}
       />
       <button
         data-testid="click-agency-node"
         onClick={(e) => {
           e.stopPropagation();
-          onNodeClick?.({ id: 'a1', label: 'DoD', type: 'Agency' });
+          onNodeClick?.({
+            id: 'a1',
+            label: 'DoD',
+            type: 'Agency',
+            properties: { agencyName: 'Department of Defense', agencyCode: '097' },
+          });
+        }}
+      />
+      <button
+        data-testid="click-edge"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdgeClick?.({
+            id: 'e1',
+            label: 'AWARDED',
+            source: 'v1',
+            target: 'c1',
+            weight: 450000,
+          });
         }}
       />
     </div>
@@ -152,10 +178,13 @@ describe('GraphPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders layout selector with fcose as default', () => {
+  it('renders layout selector with dagre as default', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
-    const select = screen.getByRole('combobox');
-    expect(select).toHaveValue('fcose');
+    // Two comboboxes when dagre is active (layout + direction); pick the one with layout options
+    const selects = screen.getAllByRole('combobox');
+    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'dagre');
+    expect(layoutSelect).toBeDefined();
+    expect(layoutSelect).toHaveValue('dagre');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {
@@ -253,7 +282,7 @@ describe('GraphPage', () => {
     await waitFor(() => expect(screen.getByText('DoD')).toBeInTheDocument());
   });
 
-  it('vendor node shows "View detail" link pointing to /vendors/detail', async () => {
+  it('vendor node shows full name, ID, total obligated, and detail link', async () => {
     api.vendors.list.mockResolvedValue(sampleVendors);
     api.graph.vendor.mockResolvedValue(sampleGraph);
     const user = userEvent.setup();
@@ -266,6 +295,13 @@ describe('GraphPage', () => {
     await user.click(screen.getByTestId('click-vendor-node'));
 
     await waitFor(() => {
+      // Full untruncated name appears (chip + panel title — both correct)
+      expect(screen.getAllByText('Palantir Technologies').length).toBeGreaterThanOrEqual(1);
+      // ID row
+      expect(screen.getByText('v1')).toBeInTheDocument();
+      // Total obligated
+      expect(screen.getByText('$9.5M')).toBeInTheDocument();
+      // Detail link
       const link = screen.getByRole('link', { name: 'View detail →' });
       expect(link).toHaveAttribute('href', '/vendors/detail?id=v1');
     });
@@ -333,7 +369,7 @@ describe('GraphPage', () => {
     expect(screen.queryByText(/Unknown Agency \(/)).not.toBeInTheDocument();
   });
 
-  it('agency node shows "View detail" link pointing to /agencies/detail', async () => {
+  it('agency node shows full name, ID, agency code, and detail link', async () => {
     api.agencies.list.mockResolvedValue(sampleAgencies);
     api.graph.agency.mockResolvedValue(sampleGraph);
     const user = userEvent.setup();
@@ -347,8 +383,77 @@ describe('GraphPage', () => {
     await user.click(screen.getByTestId('click-agency-node'));
 
     await waitFor(() => {
+      // Full name from properties (not truncated label)
+      expect(screen.getByText('Department of Defense')).toBeInTheDocument();
+      // ID row
+      expect(screen.getByText('a1')).toBeInTheDocument();
+      // Agency code
+      expect(screen.getByText('097')).toBeInTheDocument();
+      // Detail link
       const link = screen.getByRole('link', { name: 'View detail →' });
       expect(link).toHaveAttribute('href', '/agencies/detail?id=a1');
+    });
+  });
+
+  it('clicking an edge shows relationship label, endpoints, and amount', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('click-edge'));
+
+    await waitFor(() => {
+      // "From:" label is unique to the edge panel
+      expect(screen.getByText('From:')).toBeInTheDocument();
+      expect(screen.getByText('To:')).toBeInTheDocument();
+      // Amount on the edge
+      expect(screen.getByText('$450K')).toBeInTheDocument();
+    });
+  });
+
+  it('clicking a node after an edge clears the edge panel', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    // Click edge first — "From:" label marks the edge panel
+    await user.click(screen.getByTestId('click-edge'));
+    await waitFor(() => expect(screen.getByText('From:')).toBeInTheDocument());
+
+    // Then click a node — edge panel should disappear, node panel shown
+    await user.click(screen.getByTestId('click-vendor-node'));
+    await waitFor(() => {
+      expect(screen.queryByText('From:')).not.toBeInTheDocument();
+      expect(screen.getByText('$9.5M')).toBeInTheDocument();
+    });
+  });
+
+  it('contract node sidebar shows award type', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('cytoscape-canvas'));
+
+    await waitFor(() => {
+      expect(screen.getByText('$450K')).toBeInTheDocument();
+      expect(screen.getByText('A')).toBeInTheDocument();
     });
   });
 });

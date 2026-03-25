@@ -132,9 +132,18 @@ def _node_to_dict(item: Node) -> dict:
         if amount is not None:
             weight = float(amount)
     elif node_type == "Vendor":
+        for key in ("canonicalName", "totalContractValue"):
+            val = item.get(key)
+            if val is not None:
+                properties[key] = val
         val = item.get("totalContractValue")
         if val is not None:
             weight = float(val)
+    elif node_type == "Agency":
+        for key in ("agencyName", "agencyCode"):
+            val = item.get(key)
+            if val is not None:
+                properties[key] = val
 
     result: Dict[str, Any] = {
         "id": node_id,

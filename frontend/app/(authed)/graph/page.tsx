@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
-import type { ClickedNode, LayoutOptions } from '@/components/CytoscapeGraph';
+import type { ClickedNode, ClickedEdge, LayoutOptions } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
@@ -25,13 +25,22 @@ const NODE_COLORS: Record<string, string> = {
   Contract: '#f59e0b',
 };
 
+const EDGE_COLORS: Record<string, string> = {
+  AWARDED: '#ef4444',
+  AWARDED_CONTRACT: '#22c55e',
+  FUNDED: '#f59e0b',
+  SUBAGENCY_OF: '#64748b',
+  SUBCONTRACTED: '#a855f7',
+};
+
 const LAYOUTS = [
-  { value: 'fcose', label: 'fCOSE (fast force-directed)' },
+  { value: 'dagre', label: 'Dagre (hierarchical)' },
+  { value: 'fcose', label: 'fCOSE (force-directed)' },
   { value: 'cola', label: 'Cola (constraint-based)' },
+  { value: 'breadthfirst', label: 'Breadth-first' },
   { value: 'cose', label: 'CoSE (force-directed)' },
   { value: 'circle', label: 'Circle' },
   { value: 'grid', label: 'Grid' },
-  { value: 'breadthfirst', label: 'Breadth-first' },
   { value: 'concentric', label: 'Concentric' },
 ];
 
@@ -73,9 +82,13 @@ export default function GraphPage() {
   const [overviewActive, setOverviewActive] = useState(false);
   const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
-  const [layoutName, setLayoutName] = useState('fcose');
-  const [nodeRepulsion, setNodeRepulsion] = useState(4500);
-  const [idealEdgeLength, setIdealEdgeLength] = useState(50);
+  const [selectedEdge, setSelectedEdge] = useState<ClickedEdge | null>(null);
+  const [layoutName, setLayoutName] = useState('dagre');
+  const [nodeRepulsion, setNodeRepulsion] = useState(8000);
+  const [idealEdgeLength, setIdealEdgeLength] = useState(100);
+  const [dagreRankDir, setDagreRankDir] = useState<'TB' | 'LR'>('TB');
+  const [dagreRankSep, setDagreRankSep] = useState(80);
+  const [dagreNodeSep, setDagreNodeSep] = useState(40);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -154,13 +167,15 @@ export default function GraphPage() {
     [overviewActive, exploreActive, selectedEntities]
   );
 
-  const layoutOptions = useMemo<LayoutOptions | undefined>(
-    () =>
-      layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola'
-        ? { nodeRepulsion, idealEdgeLength }
-        : undefined,
-    [layoutName, nodeRepulsion, idealEdgeLength]
-  );
+  const layoutOptions = useMemo<LayoutOptions | undefined>(() => {
+    if (layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') {
+      return { nodeRepulsion, idealEdgeLength };
+    }
+    if (layoutName === 'dagre') {
+      return { dagreRankDir, dagreRankSep, dagreNodeSep };
+    }
+    return undefined;
+  }, [layoutName, nodeRepulsion, idealEdgeLength, dagreRankDir, dagreRankSep, dagreNodeSep]);
 
   const hasContracts = graphData?.nodes.some(
     (n) => n.data.type === 'Contract' && n.data.properties?.signedDate
@@ -172,6 +187,7 @@ export default function GraphPage() {
     setSearchText('');
     setShowDropdown(false);
     setSelectedNode(null);
+    setSelectedEdge(null);
     if (overviewActive) setOverviewActive(false);
     if (exploreActive) setExploreActive(false);
   }
@@ -179,6 +195,7 @@ export default function GraphPage() {
   function removeEntity(id: string) {
     setSelectedEntities((prev) => prev.filter((e) => e.id !== id));
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   function switchMode(newMode: Mode) {
@@ -186,6 +203,8 @@ export default function GraphPage() {
     setSearchText('');
     setDebouncedSearch('');
     setShowDropdown(false);
+    setSelectedNode(null);
+    setSelectedEdge(null);
     if (newMode !== 'overview') setOverviewActive(false);
     if (newMode !== 'explore') setExploreActive(false);
   }
@@ -195,6 +214,7 @@ export default function GraphPage() {
     setExploreActive(false);
     setSelectedEntities([]);
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   function loadExplore() {
@@ -202,6 +222,7 @@ export default function GraphPage() {
     setOverviewActive(false);
     setSelectedEntities([]);
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   const legendCounts = displayedGraphData?.nodes.reduce<Record<string, number>>((acc, n) => {
@@ -214,6 +235,16 @@ export default function GraphPage() {
     selectedNode?.type === 'Contract' && displayedGraphData
       ? getContractRelated(selectedNode.id, displayedGraphData)
       : null;
+
+  const nodeLabel = useMemo(() => {
+    if (!displayedGraphData) return (id: string) => id;
+    const map = new Map(displayedGraphData.nodes.map((n) => {
+      const d = n.data;
+      const name = (d.properties?.canonicalName ?? d.properties?.agencyName ?? d.label) as string;
+      return [d.id, name];
+    }));
+    return (id: string) => map.get(id) ?? id;
+  }, [displayedGraphData]);
 
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
@@ -335,6 +366,52 @@ export default function GraphPage() {
             </select>
           </div>
 
+          {layoutName === 'dagre' && (
+            <div className="space-y-2 pl-1">
+              <div className="space-y-0.5">
+                <label className="text-xs text-muted-foreground">Direction</label>
+                <select
+                  value={dagreRankDir}
+                  onChange={(e) => setDagreRankDir(e.target.value as 'TB' | 'LR')}
+                  className="w-full border rounded px-2 py-1 text-sm bg-background"
+                >
+                  <option value="TB">Top → Bottom</option>
+                  <option value="LR">Left → Right</option>
+                </select>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Rank Spacing</label>
+                  <span className="text-xs text-muted-foreground">{dagreRankSep}</span>
+                </div>
+                <input
+                  type="range"
+                  min={20}
+                  max={300}
+                  step={10}
+                  value={dagreRankSep}
+                  onChange={(e) => setDagreRankSep(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between">
+                  <label className="text-xs text-muted-foreground">Node Spacing</label>
+                  <span className="text-xs text-muted-foreground">{dagreNodeSep}</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={200}
+                  step={10}
+                  value={dagreNodeSep}
+                  onChange={(e) => setDagreNodeSep(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+          )}
+
           {(layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') && (
             <div className="space-y-2 pl-1">
               {(layoutName === 'fcose' || layoutName === 'cose') && (
@@ -376,7 +453,7 @@ export default function GraphPage() {
         {/* Legend */}
         {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Legend</p>
+            <p className="text-sm font-medium text-muted-foreground">Nodes</p>
             {Object.entries(legendCounts).map(([type, count]) => (
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
@@ -387,12 +464,27 @@ export default function GraphPage() {
                 <span className="text-muted-foreground">{count}</span>
               </div>
             ))}
-            {displayedGraphData.edges.some((e) => e.data.label === 'SUBCONTRACTED') && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="inline-block w-6 h-0 border-t-2 border-dashed shrink-0" style={{ borderColor: '#a855f7' }} />
-                <span className="flex-1 text-xs">Subcontract</span>
-              </div>
-            )}
+            {(() => {
+              const edgeTypes = [...new Set(displayedGraphData.edges.map((e) => e.data.label))];
+              if (edgeTypes.length === 0) return null;
+              return (
+                <>
+                  <p className="text-sm font-medium text-muted-foreground pt-1">Edges</p>
+                  {edgeTypes.map((label) => (
+                    <div key={label} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="inline-block w-6 h-0 border-t-2 shrink-0"
+                        style={{
+                          borderColor: EDGE_COLORS[label] ?? '#64748b',
+                          borderStyle: label === 'SUBCONTRACTED' ? 'dashed' : 'solid',
+                        }}
+                      />
+                      <span className="flex-1 text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -436,15 +528,76 @@ export default function GraphPage() {
         )}
 
         {/* Selected node panel */}
+        {selectedEdge && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-8 h-0 border-t-2 shrink-0"
+                style={{
+                  borderColor: EDGE_COLORS[selectedEdge.label] ?? '#64748b',
+                  borderStyle: selectedEdge.label === 'SUBCONTRACTED' ? 'dashed' : 'solid',
+                }}
+              />
+              <span
+                className="inline-block px-2 py-0.5 rounded text-xs text-white"
+                style={{ backgroundColor: EDGE_COLORS[selectedEdge.label] ?? '#64748b' }}
+              >
+                {selectedEdge.label}
+              </span>
+            </div>
+            <div className="space-y-1 pt-1 text-xs text-muted-foreground">
+              <p><span className="font-medium">From:</span>{' '}{nodeLabel(selectedEdge.source)}</p>
+              <p><span className="font-medium">To:</span>{' '}{nodeLabel(selectedEdge.target)}</p>
+              {selectedEdge.weight != null && (
+                <p><span className="font-medium">Amount:</span>{' '}{formatUSD(selectedEdge.weight)}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {selectedNode && (
           <div className="rounded-lg border p-3 space-y-2">
-            <p className="text-sm font-medium leading-snug">{selectedNode.label}</p>
+            <p className="text-sm font-medium leading-snug">
+              {selectedNode.type === 'Vendor' && selectedNode.properties?.canonicalName
+                ? String(selectedNode.properties.canonicalName)
+                : selectedNode.type === 'Agency' && selectedNode.properties?.agencyName
+                ? String(selectedNode.properties.agencyName)
+                : selectedNode.label}
+            </p>
             <span
               className="inline-block px-2 py-0.5 rounded text-xs text-white"
               style={{ backgroundColor: NODE_COLORS[selectedNode.type] ?? '#94a3b8' }}
             >
               {selectedNode.type}
             </span>
+
+            {selectedNode.type === 'Vendor' && (
+              <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
+                <p><span className="font-medium">ID:</span>{' '}<span className="font-mono break-all">{selectedNode.id}</span></p>
+                {selectedNode.properties?.totalContractValue != null && (
+                  <p><span className="font-medium">Total Obligated:</span>{' '}{formatUSD(Number(selectedNode.properties.totalContractValue))}</p>
+                )}
+                <div className="pt-1">
+                  <Link href={`/vendors/detail?id=${selectedNode.id}`} className="text-primary hover:underline">
+                    View detail →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {selectedNode.type === 'Agency' && (
+              <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
+                <p><span className="font-medium">ID:</span>{' '}<span className="font-mono break-all">{selectedNode.id}</span></p>
+                {!!selectedNode.properties?.agencyCode && (
+                  <p><span className="font-medium">Code:</span>{' '}<span className="font-mono">{String(selectedNode.properties.agencyCode)}</span></p>
+                )}
+                <div className="pt-1">
+                  <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-primary hover:underline">
+                    View detail →
+                  </Link>
+                </div>
+              </div>
+            )}
 
             {selectedNode.type === 'Contract' && (
               <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
@@ -455,35 +608,23 @@ export default function GraphPage() {
                   <p><span className="font-medium">ID:</span>{' '}<span className="font-mono">{String(selectedNode.properties.contractId)}</span></p>
                 )}
                 {selectedNode.properties?.obligatedAmount != null && (
-                  <p><span className="font-medium">Amount:</span> {formatUSD(Number(selectedNode.properties.obligatedAmount))}</p>
+                  <p><span className="font-medium">Amount:</span>{' '}{formatUSD(Number(selectedNode.properties.obligatedAmount))}</p>
                 )}
                 {!!selectedNode.properties?.signedDate && (
-                  <p><span className="font-medium">Signed:</span> {String(selectedNode.properties.signedDate)}</p>
+                  <p><span className="font-medium">Signed:</span>{' '}{String(selectedNode.properties.signedDate)}</p>
+                )}
+                {!!selectedNode.properties?.awardType && (
+                  <p><span className="font-medium">Type:</span>{' '}{String(selectedNode.properties.awardType)}</p>
                 )}
                 {contractRelated?.vendor && (
-                  <p><span className="font-medium">Vendor:</span> {contractRelated.vendor}</p>
+                  <p><span className="font-medium">Vendor:</span>{' '}{contractRelated.vendor}</p>
                 )}
                 {contractRelated?.awardingAgency && (
-                  <p><span className="font-medium">Awarding:</span> {contractRelated.awardingAgency}</p>
+                  <p><span className="font-medium">Awarding:</span>{' '}{contractRelated.awardingAgency}</p>
                 )}
                 {contractRelated?.fundingAgency && (
-                  <p><span className="font-medium">Funding:</span> {contractRelated.fundingAgency}</p>
+                  <p><span className="font-medium">Funding:</span>{' '}{contractRelated.fundingAgency}</p>
                 )}
-              </div>
-            )}
-
-            {selectedNode.type === 'Vendor' && (
-              <div className="pt-1">
-                <Link href={`/vendors/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
-                  View detail →
-                </Link>
-              </div>
-            )}
-            {selectedNode.type === 'Agency' && (
-              <div className="pt-1">
-                <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
-                  View detail →
-                </Link>
               </div>
             )}
           </div>
@@ -511,7 +652,8 @@ export default function GraphPage() {
             nodes={displayedGraphData.nodes}
             edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
-            onNodeClick={setSelectedNode}
+            onNodeClick={(node) => { setSelectedNode(node); setSelectedEdge(null); }}
+            onEdgeClick={(edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
             layoutName={layoutName}
             layoutOptions={layoutOptions}
           />
