@@ -52,7 +52,10 @@ interface CytoscapeGraphProps {
   edges: GraphEdge[];
   /** IDs of seed nodes to highlight with a cyan border */
   highlightedIds?: string[];
+  /** IDs of nodes that have been expanded — shown with a green dashed border */
+  expandedIds?: string[];
   onNodeClick?: (node: ClickedNode) => void;
+  onNodeDoubleClick?: (node: ClickedNode) => void;
   onEdgeClick?: (edge: ClickedEdge) => void;
   layoutName?: string;
   layoutOptions?: LayoutOptions;
@@ -62,13 +65,17 @@ export function CytoscapeGraph({
   nodes,
   edges,
   highlightedIds,
+  expandedIds,
   onNodeClick,
+  onNodeDoubleClick,
   onEdgeClick,
   layoutName = 'fcose',
   layoutOptions,
 }: CytoscapeGraphProps) {
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+  const onNodeDoubleClickRef = useRef(onNodeDoubleClick);
+  onNodeDoubleClickRef.current = onNodeDoubleClick;
   const onEdgeClickRef = useRef(onEdgeClick);
   onEdgeClickRef.current = onEdgeClick;
 
@@ -162,6 +169,14 @@ export function CytoscapeGraph({
         }))
         : []),
 
+      // --- Expanded nodes (double-clicked) ---
+      ...(expandedIds?.length
+        ? expandedIds.map((id) => ({
+          selector: `node[id = "${id}"]`,
+          style: { 'border-width': 3, 'border-color': '#a855f7', 'border-style': 'dashed' as const },
+        }))
+        : []),
+
       // --- Base edge style ---
       {
         selector: 'edge',
@@ -226,7 +241,7 @@ export function CytoscapeGraph({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [highlightedIds?.join(',')]
+    [highlightedIds?.join(','), expandedIds?.join(',')]
   );
 
   // Re-run layout when layoutName or layoutOptions change
@@ -245,6 +260,16 @@ export function CytoscapeGraph({
     cy.on('tap', 'node', (evt) => {
       const n = evt.target;
       onNodeClickRef.current?.({
+        id: n.id(),
+        label: n.data('label'),
+        type: n.data('type'),
+        properties: n.data('properties'),
+      });
+    });
+    cy.off('dbltap', 'node');
+    cy.on('dbltap', 'node', (evt) => {
+      const n = evt.target;
+      onNodeDoubleClickRef.current?.({
         id: n.id(),
         label: n.data('label'),
         type: n.data('type'),

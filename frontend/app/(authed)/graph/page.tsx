@@ -92,6 +92,7 @@ export default function GraphPage() {
   const [contractLimit, setContractLimit] = useState(500);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -138,14 +139,22 @@ export default function GraphPage() {
     enabled: graphEnabled,
   });
 
+  // Merge base query result with any manually expanded subgraphs
+  const allGraphData = useMemo(() => {
+    if (!graphData && expansions.size === 0) return undefined;
+    const base = graphData ?? { nodes: [], edges: [] };
+    if (expansions.size === 0) return base;
+    return mergeGraphResponses([base, ...expansions.values()]);
+  }, [graphData, expansions]);
+
   // Client-side date filter: hide Contract nodes outside [dateFrom, dateTo]
   const displayedGraphData = useMemo(() => {
-    if (!graphData || (!dateFrom && !dateTo)) return graphData;
+    if (!allGraphData || (!dateFrom && !dateTo)) return allGraphData;
     const from = dateFrom ? new Date(dateFrom).getTime() : -Infinity;
     const to = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : Infinity;
 
     const hiddenIds = new Set(
-      graphData.nodes
+      allGraphData.nodes
         .filter((n) => {
           if (n.data.type !== 'Contract') return false;
           const d = n.data.properties?.signedDate as string | undefined;
@@ -156,14 +165,14 @@ export default function GraphPage() {
         .map((n) => n.data.id)
     );
 
-    if (hiddenIds.size === 0) return graphData;
+    if (hiddenIds.size === 0) return allGraphData;
     return {
-      nodes: graphData.nodes.filter((n) => !hiddenIds.has(n.data.id)),
-      edges: graphData.edges.filter(
+      nodes: allGraphData.nodes.filter((n) => !hiddenIds.has(n.data.id)),
+      edges: allGraphData.edges.filter(
         (e) => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target)
       ),
     };
-  }, [graphData, dateFrom, dateTo]);
+  }, [allGraphData, dateFrom, dateTo]);
 
   const highlightedIds = useMemo(
     () => (overviewActive || exploreActive ? [] : selectedEntities.map((e) => e.id)),
@@ -180,13 +189,14 @@ export default function GraphPage() {
     return undefined;
   }, [layoutName, nodeRepulsion, idealEdgeLength, dagreRankDir, dagreRankSep, dagreNodeSep]);
 
-  const hasContracts = graphData?.nodes.some(
+  const hasContracts = allGraphData?.nodes.some(
     (n) => n.data.type === 'Contract' && n.data.properties?.signedDate
   ) ?? false;
 
   function addEntity(id: string, name: string) {
     if (selectedEntities.some((e) => e.id === id)) return;
     setSelectedEntities((prev) => [...prev, { id, name, type: mode as EntityMode }]);
+    setExpansions(new Map());
     setSearchText('');
     setShowDropdown(false);
     setSelectedNode(null);
@@ -197,12 +207,14 @@ export default function GraphPage() {
 
   function removeEntity(id: string) {
     setSelectedEntities((prev) => prev.filter((e) => e.id !== id));
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
   }
 
   function switchMode(newMode: Mode) {
     setMode(newMode);
+    setExpansions(new Map());
     setSearchText('');
     setDebouncedSearch('');
     setShowDropdown(false);
@@ -216,6 +228,7 @@ export default function GraphPage() {
     setOverviewActive(true);
     setExploreActive(false);
     setSelectedEntities([]);
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
   }
@@ -224,8 +237,34 @@ export default function GraphPage() {
     setExploreActive(true);
     setOverviewActive(false);
     setSelectedEntities([]);
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
+  }
+
+  async function expandNode(node: ClickedNode) {
+    // Toggle: if already expanded, collapse by removing its data
+    if (expansions.has(node.id)) {
+      setExpansions((prev) => {
+        const next = new Map(prev);
+        next.delete(node.id);
+        return next;
+      });
+      return;
+    }
+    try {
+      let result: GraphResponse;
+      if (node.type === 'Vendor') {
+        result = await api.graph.vendor(node.id, contractLimit);
+      } else if (node.type === 'Agency') {
+        result = await api.graph.agency(node.id, contractLimit);
+      } else {
+        result = await api.graph.contract(node.id);
+      }
+      setExpansions((prev) => new Map(prev).set(node.id, result));
+    } catch {
+      // node may not exist in graph DB — fail silently
+    }
   }
 
   const legendCounts = displayedGraphData?.nodes.reduce<Record<string, number>>((acc, n) => {
@@ -513,6 +552,23 @@ export default function GraphPage() {
           </div>
         )}
 
+        {/* Expansion hint / controls */}
+        {graphEnabled && !isLoading && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Double-click any node to expand its connections · double-click again to collapse
+            </p>
+            {expansions.size > 0 && (
+              <button
+                className="text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => setExpansions(new Map())}
+              >
+                Clear expansions ({expansions.size})
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Date filter — shown when graph has contracts with signedDate */}
         {hasContracts && (
           <div className="space-y-2">
@@ -677,7 +733,9 @@ export default function GraphPage() {
             nodes={displayedGraphData.nodes}
             edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
+            expandedIds={[...expansions.keys()]}
             onNodeClick={(node) => { setSelectedNode(node); setSelectedEdge(null); }}
+            onNodeDoubleClick={expandNode}
             onEdgeClick={(edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
             layoutName={layoutName}
             layoutOptions={layoutOptions}

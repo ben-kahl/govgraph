@@ -176,4 +176,10 @@ describe('api.graph', () => {
     expect(url).toContain('from=vendor-a');
     expect(url).toContain('to=agency-b');
   });
+
+  it('contract() calls /graph/contract/:id', async () => {
+    mockFetch.mockReturnValue(okJson({ nodes: [], edges: [] }));
+    await api.graph.contract('c1');
+    expect(mockFetch).toHaveBeenCalledWith(`${BASE_URL}/graph/contract/c1`, expect.any(Object));
+  });
 });
