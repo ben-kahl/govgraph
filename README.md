@@ -3,7 +3,7 @@
 GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed for federal procurement analysis. The system aggregates contract data from USAspending.gov, leverages Large Language Models (Amazon Bedrock) for entity resolution, and constructs a knowledge graph (Neo4j) to map complex relationships between government agencies, prime contractors, and subcontractors.
 
 ### Check it out here:
-[https://main.d2680fpqajv7av.amplifyapp.com]
+[Live Demo](https://main.d2680fpqajv7av.amplifyapp.com)
 
 ## Key Features
 
@@ -13,7 +13,10 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 * Infrastructure as Code: The entire environment is fully provisioned via Terraform
 
-* Serverless Architecture: Using Lambda with scheduled jobs and to host the FastAPI backend. 
+* Serverless Architecture: Using Lambda with scheduled jobs and to host the FastAPI backend via API Gateway.
+
+## Screenshots
+![Demo showing basic graph overview](./assets/overview.png)
 
 ## Tech Stack
 
@@ -23,7 +26,7 @@ GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed f
 
 * Data & AI: Neo4j (AuraDB), PostgreSQL, Amazon Bedrock (LLM), Pandas
 
-* Frontend: Next.js, Cytoscape.js (Graph Visualization), Tailwind CSS
+* Frontend: Next.js, Cytoscape.js (Graph Visualization), Recharts (Chart Visualization),Tailwind CSS
 
 * CI/CD: GitHub Actions, Pytest
 
@@ -61,7 +64,7 @@ The platform manages complex relationships with plans to include:
 
 * Clone the repository:
     ```Bash
-    git clone https://github.com/ben-kahl/gov-graph.git
+    git clone https://github.com/ben-kahl/govgraph.git
     cd gov-graph
     ```
 
@@ -74,10 +77,10 @@ The platform manages complex relationships with plans to include:
 
 ### Roadmap
 
-    [x] Core Backend Infrastructure
+- [x] Core Backend Infrastructure
 
-    [x] Phase 1: ETL Backend Pipeline (Scraper, Bedrock Cleaner, SQS integration)
+- [x] Phase 1: ETL Backend Pipeline (Scraper, Bedrock Cleaner, SQS integration)
 
-    [x] Phase 2: Neo4j Sync Engine
+- [x] Phase 2: Neo4j Sync Engine
 
-    [Testing] Phase 3: Graph Visualization Dashboard
+- [] Phase 3: Graph Visualization Dashboard
