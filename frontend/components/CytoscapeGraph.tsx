@@ -54,6 +54,8 @@ interface CytoscapeGraphProps {
   highlightedIds?: string[];
   /** IDs of nodes that have been expanded — shown with a green dashed border */
   expandedIds?: string[];
+  /** ID of the node most recently double-clicked to expand — new nodes will ring around it */
+  expansionRootId?: string | null;
   onNodeClick?: (node: ClickedNode) => void;
   onNodeDoubleClick?: (node: ClickedNode) => void;
   onEdgeClick?: (edge: ClickedEdge) => void;
@@ -66,6 +68,7 @@ export function CytoscapeGraph({
   edges,
   highlightedIds,
   expandedIds,
+  expansionRootId,
   onNodeClick,
   onNodeDoubleClick,
   onEdgeClick,
@@ -81,6 +84,7 @@ export function CytoscapeGraph({
 
   const cyRef = useRef<Core | null>(null);
   const prevLayoutKeyRef = useRef('');
+  const prevNodeIdsRef = useRef<Set<string>>(new Set());
 
   const elements = useMemo(() => [...nodes, ...edges], [nodes, edges]);
 
@@ -244,6 +248,12 @@ export function CytoscapeGraph({
     [highlightedIds?.join(','), expandedIds?.join(',')]
   );
 
+  // Stable refs used inside effects to avoid stale closures without re-subscribing
+  const layoutConfigRef = useRef(layoutConfig);
+  layoutConfigRef.current = layoutConfig;
+  const expansionRootIdRef = useRef(expansionRootId);
+  expansionRootIdRef.current = expansionRootId;
+
   // Re-run layout when layoutName or layoutOptions change
   useEffect(() => {
     const key = JSON.stringify(layoutConfig);
@@ -253,6 +263,51 @@ export function CytoscapeGraph({
       cyRef.current.layout(layoutConfig as any).run();
     }
   }, [layoutConfig]);
+
+  // Handle element changes: position new nodes concentrically around expansion root,
+  // or re-run the layout when nodes are removed (collapse/clear).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    const currentIds = new Set(nodes.map((n) => n.data.id));
+    const prevIds = prevNodeIdsRef.current;
+
+    const addedIds = nodes.map((n) => n.data.id).filter((id) => !prevIds.has(id));
+    const hadExisting = prevIds.size > 0;
+
+    if (addedIds.length > 0 && hadExisting) {
+      // New nodes added — arrange in a ring around the expansion root if known
+      const rootId = expansionRootIdRef.current;
+      const rootEl = rootId ? cy.getElementById(rootId) : null;
+      if (rootEl && rootEl.length > 0) {
+        const center = rootEl.position();
+        const radius = Math.max(200, addedIds.length * 30);
+        addedIds.forEach((id, i) => {
+          const angle = (2 * Math.PI * i) / addedIds.length - Math.PI / 2;
+          const el = cy.getElementById(id);
+          if (el.length > 0) {
+            el.position({
+              x: center.x + radius * Math.cos(angle),
+              y: center.y + radius * Math.sin(angle),
+            });
+          }
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cy.animate({ fit: { eles: cy.elements() as any, padding: 60 } } as any, { duration: 400 });
+      } else {
+        // Fallback: no known root, re-run the full layout
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cy.layout(layoutConfigRef.current as any).run();
+      }
+    } else if (currentIds.size < prevIds.size && hadExisting) {
+      // Nodes removed (collapse or clear) — re-run layout to close the gaps
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cy.layout(layoutConfigRef.current as any).run();
+    }
+
+    prevNodeIdsRef.current = currentIds;
+  }, [nodes, edges]);
 
   const handleCy = useCallback((cy: Core) => {
     cyRef.current = cy;
