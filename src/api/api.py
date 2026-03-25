@@ -637,12 +637,17 @@ async def get_contract_graph(
     id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Return a contract node with its directly connected vendors and agencies."""
+    """Return a contract node with its directly connected vendors and agencies.
+
+    Matches by ``id`` property first, then falls back to elementId so that
+    contracts without an explicit UUID property are still retrievable.
+    """
     driver = _require_neo4j()
     with driver.session() as session:
         result = session.run(
             """
-            MATCH (c:Contract {id: $id})
+            MATCH (c:Contract)
+            WHERE c.id = $id OR elementId(c) = $id
             OPTIONAL MATCH (v:Vendor)-[ra:AWARDED]->(c)
             OPTIONAL MATCH (aw_a:Agency)-[rac:AWARDED_CONTRACT]->(c)
             OPTIONAL MATCH (fu_a:Agency)-[rf:FUNDED]->(c)
