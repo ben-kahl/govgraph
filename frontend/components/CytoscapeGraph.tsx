@@ -27,6 +27,14 @@ export interface ClickedNode {
   properties?: Record<string, unknown>;
 }
 
+export interface ClickedEdge {
+  id: string;
+  label: string;
+  source: string;
+  target: string;
+  weight?: number;
+}
+
 export interface LayoutOptions {
   nodeRepulsion?: number;
   idealEdgeLength?: number;
@@ -38,6 +46,7 @@ interface CytoscapeGraphProps {
   /** IDs of seed nodes to highlight with a cyan border */
   highlightedIds?: string[];
   onNodeClick?: (node: ClickedNode) => void;
+  onEdgeClick?: (edge: ClickedEdge) => void;
   layoutName?: string;
   layoutOptions?: LayoutOptions;
 }
@@ -47,11 +56,14 @@ export function CytoscapeGraph({
   edges,
   highlightedIds,
   onNodeClick,
+  onEdgeClick,
   layoutName = 'fcose',
   layoutOptions,
 }: CytoscapeGraphProps) {
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+  const onEdgeClickRef = useRef(onEdgeClick);
+  onEdgeClickRef.current = onEdgeClick;
 
   const cyRef = useRef<Core | null>(null);
   const prevLayoutKeyRef = useRef('');
@@ -136,14 +148,37 @@ export function CytoscapeGraph({
         selector: 'edge',
         style: {
           width: 1,
-          'line-color': '#94a3b8',
-          'target-arrow-color': '#94a3b8',
+          'line-color': '#64748b',
+          'target-arrow-color': '#64748b',
           'target-arrow-shape': 'triangle' as const,
           'curve-style': 'bezier' as const,
-          label: 'data(label)',
-          'font-size': '8px',
-          color: 'black',
-          'text-rotation': 'autorotate' as const,
+          opacity: 0.7,
+        },
+      },
+
+      // --- Edge colors by relationship type ---
+      {
+        selector: 'edge[label = "AWARDED"]',
+        style: { 'line-color': '#ef4444', 'target-arrow-color': '#ef4444' },
+      },
+      {
+        selector: 'edge[label = "AWARDED_CONTRACT"]',
+        style: { 'line-color': '#22c55e', 'target-arrow-color': '#22c55e' },
+      },
+      {
+        selector: 'edge[label = "FUNDED"]',
+        style: { 'line-color': '#f59e0b', 'target-arrow-color': '#f59e0b' },
+      },
+      {
+        selector: 'edge[label = "SUBAGENCY_OF"]',
+        style: { 'line-color': '#64748b', 'target-arrow-color': '#64748b' },
+      },
+      {
+        selector: 'edge[label = "SUBCONTRACTED"]',
+        style: {
+          'line-color': '#a855f7',
+          'target-arrow-color': '#a855f7',
+          'line-style': 'dashed' as const,
         },
       },
 
@@ -165,14 +200,10 @@ export function CytoscapeGraph({
         style: { width: 7 },
       },
 
-      // --- Subcontract edges — dashed purple ---
+      // --- Selected edge highlight ---
       {
-        selector: 'edge[label = "SUBCONTRACTED"]',
-        style: {
-          'line-color': '#a855f7',
-          'target-arrow-color': '#a855f7',
-          'line-style': 'dashed' as const,
-        },
+        selector: 'edge:selected',
+        style: { opacity: 1, width: 3 },
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -199,6 +230,17 @@ export function CytoscapeGraph({
         label: n.data('label'),
         type: n.data('type'),
         properties: n.data('properties'),
+      });
+    });
+    cy.off('tap', 'edge');
+    cy.on('tap', 'edge', (evt) => {
+      const e = evt.target;
+      onEdgeClickRef.current?.({
+        id: e.id(),
+        label: e.data('label'),
+        source: e.data('source'),
+        target: e.data('target'),
+        weight: e.data('weight'),
       });
     });
   }, []);

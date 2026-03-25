@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
-import type { ClickedNode, LayoutOptions } from '@/components/CytoscapeGraph';
+import type { ClickedNode, ClickedEdge, LayoutOptions } from '@/components/CytoscapeGraph';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
@@ -23,6 +23,14 @@ const NODE_COLORS: Record<string, string> = {
   Vendor: '#ef4444',
   Agency: '#22c55e',
   Contract: '#f59e0b',
+};
+
+const EDGE_COLORS: Record<string, string> = {
+  AWARDED: '#ef4444',
+  AWARDED_CONTRACT: '#22c55e',
+  FUNDED: '#f59e0b',
+  SUBAGENCY_OF: '#64748b',
+  SUBCONTRACTED: '#a855f7',
 };
 
 const LAYOUTS = [
@@ -73,6 +81,7 @@ export default function GraphPage() {
   const [overviewActive, setOverviewActive] = useState(false);
   const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<ClickedEdge | null>(null);
   const [layoutName, setLayoutName] = useState('fcose');
   const [nodeRepulsion, setNodeRepulsion] = useState(4500);
   const [idealEdgeLength, setIdealEdgeLength] = useState(50);
@@ -172,6 +181,7 @@ export default function GraphPage() {
     setSearchText('');
     setShowDropdown(false);
     setSelectedNode(null);
+    setSelectedEdge(null);
     if (overviewActive) setOverviewActive(false);
     if (exploreActive) setExploreActive(false);
   }
@@ -179,6 +189,7 @@ export default function GraphPage() {
   function removeEntity(id: string) {
     setSelectedEntities((prev) => prev.filter((e) => e.id !== id));
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   function switchMode(newMode: Mode) {
@@ -186,6 +197,8 @@ export default function GraphPage() {
     setSearchText('');
     setDebouncedSearch('');
     setShowDropdown(false);
+    setSelectedNode(null);
+    setSelectedEdge(null);
     if (newMode !== 'overview') setOverviewActive(false);
     if (newMode !== 'explore') setExploreActive(false);
   }
@@ -195,6 +208,7 @@ export default function GraphPage() {
     setExploreActive(false);
     setSelectedEntities([]);
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   function loadExplore() {
@@ -202,6 +216,7 @@ export default function GraphPage() {
     setOverviewActive(false);
     setSelectedEntities([]);
     setSelectedNode(null);
+    setSelectedEdge(null);
   }
 
   const legendCounts = displayedGraphData?.nodes.reduce<Record<string, number>>((acc, n) => {
@@ -214,6 +229,16 @@ export default function GraphPage() {
     selectedNode?.type === 'Contract' && displayedGraphData
       ? getContractRelated(selectedNode.id, displayedGraphData)
       : null;
+
+  const nodeLabel = useMemo(() => {
+    if (!displayedGraphData) return (id: string) => id;
+    const map = new Map(displayedGraphData.nodes.map((n) => {
+      const d = n.data;
+      const name = (d.properties?.canonicalName ?? d.properties?.agencyName ?? d.label) as string;
+      return [d.id, name];
+    }));
+    return (id: string) => map.get(id) ?? id;
+  }, [displayedGraphData]);
 
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
@@ -376,7 +401,7 @@ export default function GraphPage() {
         {/* Legend */}
         {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Legend</p>
+            <p className="text-sm font-medium text-muted-foreground">Nodes</p>
             {Object.entries(legendCounts).map(([type, count]) => (
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
@@ -387,12 +412,27 @@ export default function GraphPage() {
                 <span className="text-muted-foreground">{count}</span>
               </div>
             ))}
-            {displayedGraphData.edges.some((e) => e.data.label === 'SUBCONTRACTED') && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="inline-block w-6 h-0 border-t-2 border-dashed shrink-0" style={{ borderColor: '#a855f7' }} />
-                <span className="flex-1 text-xs">Subcontract</span>
-              </div>
-            )}
+            {(() => {
+              const edgeTypes = [...new Set(displayedGraphData.edges.map((e) => e.data.label))];
+              if (edgeTypes.length === 0) return null;
+              return (
+                <>
+                  <p className="text-sm font-medium text-muted-foreground pt-1">Edges</p>
+                  {edgeTypes.map((label) => (
+                    <div key={label} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="inline-block w-6 h-0 border-t-2 shrink-0"
+                        style={{
+                          borderColor: EDGE_COLORS[label] ?? '#64748b',
+                          borderStyle: label === 'SUBCONTRACTED' ? 'dashed' : 'solid',
+                        }}
+                      />
+                      <span className="flex-1 text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -436,6 +476,33 @@ export default function GraphPage() {
         )}
 
         {/* Selected node panel */}
+        {selectedEdge && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-8 h-0 border-t-2 shrink-0"
+                style={{
+                  borderColor: EDGE_COLORS[selectedEdge.label] ?? '#64748b',
+                  borderStyle: selectedEdge.label === 'SUBCONTRACTED' ? 'dashed' : 'solid',
+                }}
+              />
+              <span
+                className="inline-block px-2 py-0.5 rounded text-xs text-white"
+                style={{ backgroundColor: EDGE_COLORS[selectedEdge.label] ?? '#64748b' }}
+              >
+                {selectedEdge.label}
+              </span>
+            </div>
+            <div className="space-y-1 pt-1 text-xs text-muted-foreground">
+              <p><span className="font-medium">From:</span>{' '}{nodeLabel(selectedEdge.source)}</p>
+              <p><span className="font-medium">To:</span>{' '}{nodeLabel(selectedEdge.target)}</p>
+              {selectedEdge.weight != null && (
+                <p><span className="font-medium">Amount:</span>{' '}{formatUSD(selectedEdge.weight)}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {selectedNode && (
           <div className="rounded-lg border p-3 space-y-2">
             <p className="text-sm font-medium leading-snug">
@@ -533,7 +600,8 @@ export default function GraphPage() {
             nodes={displayedGraphData.nodes}
             edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
-            onNodeClick={setSelectedNode}
+            onNodeClick={(node) => { setSelectedNode(node); setSelectedEdge(null); }}
+            onEdgeClick={(edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
             layoutName={layoutName}
             layoutOptions={layoutOptions}
           />

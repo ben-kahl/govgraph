@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GraphPage from '@/app/(authed)/graph/page';
-import type { ClickedNode } from '@/components/CytoscapeGraph';
+import type { ClickedNode, ClickedEdge } from '@/components/CytoscapeGraph';
 import type { PaginatedVendors, PaginatedAgencies, GraphResponse } from '@/types/api';
 
 jest.mock('next/navigation', () => ({
@@ -22,10 +22,12 @@ jest.mock('@/components/CytoscapeGraph', () => ({
     nodes,
     edges,
     onNodeClick,
+    onEdgeClick,
   }: {
     nodes: unknown[];
     edges: unknown[];
     onNodeClick?: (n: ClickedNode) => void;
+    onEdgeClick?: (e: ClickedEdge) => void;
   }) => (
     // Clicking the outer div fires a Contract node click (preserves existing tests).
     // The inner buttons fire Vendor/Agency clicks with stopPropagation so they
@@ -70,6 +72,19 @@ jest.mock('@/components/CytoscapeGraph', () => ({
             label: 'DoD',
             type: 'Agency',
             properties: { agencyName: 'Department of Defense', agencyCode: '097' },
+          });
+        }}
+      />
+      <button
+        data-testid="click-edge"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdgeClick?.({
+            id: 'e1',
+            label: 'AWARDED',
+            source: 'v1',
+            target: 'c1',
+            weight: 450000,
           });
         }}
       />
@@ -374,6 +389,50 @@ describe('GraphPage', () => {
       // Detail link
       const link = screen.getByRole('link', { name: 'View detail →' });
       expect(link).toHaveAttribute('href', '/agencies/detail?id=a1');
+    });
+  });
+
+  it('clicking an edge shows relationship label, endpoints, and amount', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+    await user.click(screen.getByTestId('click-edge'));
+
+    await waitFor(() => {
+      // "From:" label is unique to the edge panel
+      expect(screen.getByText('From:')).toBeInTheDocument();
+      expect(screen.getByText('To:')).toBeInTheDocument();
+      // Amount on the edge
+      expect(screen.getByText('$450K')).toBeInTheDocument();
+    });
+  });
+
+  it('clicking a node after an edge clears the edge panel', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    // Click edge first — "From:" label marks the edge panel
+    await user.click(screen.getByTestId('click-edge'));
+    await waitFor(() => expect(screen.getByText('From:')).toBeInTheDocument());
+
+    // Then click a node — edge panel should disappear, node panel shown
+    await user.click(screen.getByTestId('click-vendor-node'));
+    await waitFor(() => {
+      expect(screen.queryByText('From:')).not.toBeInTheDocument();
+      expect(screen.getByText('$9.5M')).toBeInTheDocument();
     });
   });
 
