@@ -13,7 +13,7 @@ jest.mock('@/lib/api', () => ({
   api: {
     vendors: { list: jest.fn() },
     agencies: { list: jest.fn() },
-    graph: { vendor: jest.fn(), agency: jest.fn(), overview: jest.fn(), explore: jest.fn() },
+    graph: { vendor: jest.fn(), agency: jest.fn(), contract: jest.fn(), overview: jest.fn(), explore: jest.fn() },
   },
 }));
 
@@ -22,11 +22,13 @@ jest.mock('@/components/CytoscapeGraph', () => ({
     nodes,
     edges,
     onNodeClick,
+    onNodeDoubleClick,
     onEdgeClick,
   }: {
     nodes: unknown[];
     edges: unknown[];
     onNodeClick?: (n: ClickedNode) => void;
+    onNodeDoubleClick?: (n: ClickedNode) => void;
     onEdgeClick?: (e: ClickedEdge) => void;
   }) => (
     // Clicking the outer div fires a Contract node click (preserves existing tests).
@@ -88,6 +90,30 @@ jest.mock('@/components/CytoscapeGraph', () => ({
           });
         }}
       />
+      <button
+        data-testid="dblclick-vendor-node"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeDoubleClick?.({
+            id: 'v1',
+            label: 'Palantir Technolog…',
+            type: 'Vendor',
+            properties: { canonicalName: 'Palantir Technologies', totalContractValue: 9_500_000 },
+          });
+        }}
+      />
+      <button
+        data-testid="dblclick-contract-node"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeDoubleClick?.({
+            id: 'c1',
+            label: 'Provide IT services for the DoD',
+            type: 'Contract',
+            properties: { contractId: 'MSW25FR0001234', obligatedAmount: 450000 },
+          });
+        }}
+      />
     </div>
   ),
 }));
@@ -96,7 +122,7 @@ const { api } = jest.requireMock('@/lib/api') as {
   api: {
     vendors: { list: jest.Mock };
     agencies: { list: jest.Mock };
-    graph: { vendor: jest.Mock; agency: jest.Mock; overview: jest.Mock; explore: jest.Mock };
+    graph: { vendor: jest.Mock; agency: jest.Mock; contract: jest.Mock; overview: jest.Mock; explore: jest.Mock };
   };
 };
 
@@ -178,13 +204,12 @@ describe('GraphPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders layout selector with dagre as default', () => {
+  it('renders layout selector with fcose as default', () => {
     render(<GraphPage />, { wrapper: makeWrapper() });
-    // Two comboboxes when dagre is active (layout + direction); pick the one with layout options
     const selects = screen.getAllByRole('combobox');
-    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'dagre');
+    const layoutSelect = selects.find((s) => (s as HTMLSelectElement).value === 'fcose');
     expect(layoutSelect).toBeDefined();
-    expect(layoutSelect).toHaveValue('dagre');
+    expect(layoutSelect).toHaveValue('fcose');
   });
 
   it('shows dropdown suggestions when typing ≥2 chars', async () => {
@@ -207,7 +232,7 @@ describe('GraphPage', () => {
     await user.click(screen.getByText('Palantir Technologies'));
 
     await waitFor(() => expect(screen.getByTestId('cytoscape-canvas')).toBeInTheDocument());
-    expect(api.graph.vendor).toHaveBeenCalledWith('v1');
+    expect(api.graph.vendor).toHaveBeenCalledWith('v1', 500);
     // Entity appears in the loaded chip list
     expect(screen.getByText('Loaded (1)')).toBeInTheDocument();
   });
@@ -437,6 +462,58 @@ describe('GraphPage', () => {
       expect(screen.queryByText('From:')).not.toBeInTheDocument();
       expect(screen.getByText('$9.5M')).toBeInTheDocument();
     });
+  });
+
+  it('double-clicking a vendor node calls api.graph.vendor and merges nodes', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    // Double-click vendor node — triggers a second vendor graph fetch
+    await user.click(screen.getByTestId('dblclick-vendor-node'));
+    await waitFor(() => expect(api.graph.vendor).toHaveBeenCalledWith('v1', 500));
+  });
+
+  it('double-clicking a contract node calls api.graph.contract', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    api.graph.contract.mockResolvedValue({ nodes: [], edges: [] });
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    await user.click(screen.getByTestId('dblclick-contract-node'));
+    await waitFor(() => expect(api.graph.contract).toHaveBeenCalledWith('c1'));
+  });
+
+  it('double-clicking the same node twice collapses the expansion', async () => {
+    api.vendors.list.mockResolvedValue(sampleVendors);
+    api.graph.vendor.mockResolvedValue(sampleGraph);
+    const user = userEvent.setup();
+    render(<GraphPage />, { wrapper: makeWrapper() });
+
+    await user.type(screen.getByPlaceholderText('Search vendors…'), 'pal');
+    await waitFor(() => screen.getByText('Palantir Technologies'));
+    await user.click(screen.getByText('Palantir Technologies'));
+    await waitFor(() => screen.getByTestId('cytoscape-canvas'));
+
+    // First double-click: expand
+    await user.click(screen.getByTestId('dblclick-vendor-node'));
+    await waitFor(() => screen.getByText(/Clear expansions/));
+
+    // Second double-click: collapse
+    await user.click(screen.getByTestId('dblclick-vendor-node'));
+    await waitFor(() => expect(screen.queryByText(/Clear expansions/)).not.toBeInTheDocument());
   });
 
   it('contract node sidebar shows award type', async () => {

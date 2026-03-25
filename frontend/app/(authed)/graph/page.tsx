@@ -83,14 +83,16 @@ export default function GraphPage() {
   const [exploreActive, setExploreActive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClickedNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<ClickedEdge | null>(null);
-  const [layoutName, setLayoutName] = useState('dagre');
+  const [layoutName, setLayoutName] = useState('fcose');
   const [nodeRepulsion, setNodeRepulsion] = useState(8000);
   const [idealEdgeLength, setIdealEdgeLength] = useState(100);
   const [dagreRankDir, setDagreRankDir] = useState<'TB' | 'LR'>('TB');
   const [dagreRankSep, setDagreRankSep] = useState(80);
   const [dagreNodeSep, setDagreNodeSep] = useState(40);
+  const [contractLimit, setContractLimit] = useState(500);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -118,7 +120,7 @@ export default function GraphPage() {
     ? ['graph', 'overview']
     : exploreActive
     ? ['graph', 'explore']
-    : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(',')];
+    : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(','), contractLimit];
 
   const { data: graphData, isLoading, isError } = useQuery({
     queryKey,
@@ -127,7 +129,9 @@ export default function GraphPage() {
       if (exploreActive) return api.graph.explore();
       const results = await Promise.all(
         selectedEntities.map((e) =>
-          e.type === 'vendor' ? api.graph.vendor(e.id) : api.graph.agency(e.id)
+          e.type === 'vendor'
+            ? api.graph.vendor(e.id, contractLimit)
+            : api.graph.agency(e.id, contractLimit)
         )
       );
       return mergeGraphResponses(results);
@@ -135,14 +139,22 @@ export default function GraphPage() {
     enabled: graphEnabled,
   });
 
+  // Merge base query result with any manually expanded subgraphs
+  const allGraphData = useMemo(() => {
+    if (!graphData && expansions.size === 0) return undefined;
+    const base = graphData ?? { nodes: [], edges: [] };
+    if (expansions.size === 0) return base;
+    return mergeGraphResponses([base, ...expansions.values()]);
+  }, [graphData, expansions]);
+
   // Client-side date filter: hide Contract nodes outside [dateFrom, dateTo]
   const displayedGraphData = useMemo(() => {
-    if (!graphData || (!dateFrom && !dateTo)) return graphData;
+    if (!allGraphData || (!dateFrom && !dateTo)) return allGraphData;
     const from = dateFrom ? new Date(dateFrom).getTime() : -Infinity;
     const to = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : Infinity;
 
     const hiddenIds = new Set(
-      graphData.nodes
+      allGraphData.nodes
         .filter((n) => {
           if (n.data.type !== 'Contract') return false;
           const d = n.data.properties?.signedDate as string | undefined;
@@ -153,14 +165,14 @@ export default function GraphPage() {
         .map((n) => n.data.id)
     );
 
-    if (hiddenIds.size === 0) return graphData;
+    if (hiddenIds.size === 0) return allGraphData;
     return {
-      nodes: graphData.nodes.filter((n) => !hiddenIds.has(n.data.id)),
-      edges: graphData.edges.filter(
+      nodes: allGraphData.nodes.filter((n) => !hiddenIds.has(n.data.id)),
+      edges: allGraphData.edges.filter(
         (e) => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target)
       ),
     };
-  }, [graphData, dateFrom, dateTo]);
+  }, [allGraphData, dateFrom, dateTo]);
 
   const highlightedIds = useMemo(
     () => (overviewActive || exploreActive ? [] : selectedEntities.map((e) => e.id)),
@@ -177,13 +189,14 @@ export default function GraphPage() {
     return undefined;
   }, [layoutName, nodeRepulsion, idealEdgeLength, dagreRankDir, dagreRankSep, dagreNodeSep]);
 
-  const hasContracts = graphData?.nodes.some(
+  const hasContracts = allGraphData?.nodes.some(
     (n) => n.data.type === 'Contract' && n.data.properties?.signedDate
   ) ?? false;
 
   function addEntity(id: string, name: string) {
     if (selectedEntities.some((e) => e.id === id)) return;
     setSelectedEntities((prev) => [...prev, { id, name, type: mode as EntityMode }]);
+    setExpansions(new Map());
     setSearchText('');
     setShowDropdown(false);
     setSelectedNode(null);
@@ -194,12 +207,14 @@ export default function GraphPage() {
 
   function removeEntity(id: string) {
     setSelectedEntities((prev) => prev.filter((e) => e.id !== id));
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
   }
 
   function switchMode(newMode: Mode) {
     setMode(newMode);
+    setExpansions(new Map());
     setSearchText('');
     setDebouncedSearch('');
     setShowDropdown(false);
@@ -213,6 +228,7 @@ export default function GraphPage() {
     setOverviewActive(true);
     setExploreActive(false);
     setSelectedEntities([]);
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
   }
@@ -221,8 +237,34 @@ export default function GraphPage() {
     setExploreActive(true);
     setOverviewActive(false);
     setSelectedEntities([]);
+    setExpansions(new Map());
     setSelectedNode(null);
     setSelectedEdge(null);
+  }
+
+  async function expandNode(node: ClickedNode) {
+    // Toggle: if already expanded, collapse by removing its data
+    if (expansions.has(node.id)) {
+      setExpansions((prev) => {
+        const next = new Map(prev);
+        next.delete(node.id);
+        return next;
+      });
+      return;
+    }
+    try {
+      let result: GraphResponse;
+      if (node.type === 'Vendor') {
+        result = await api.graph.vendor(node.id, contractLimit);
+      } else if (node.type === 'Agency') {
+        result = await api.graph.agency(node.id, contractLimit);
+      } else {
+        result = await api.graph.contract(node.id);
+      }
+      setExpansions((prev) => new Map(prev).set(node.id, result));
+    } catch {
+      // node may not exist in graph DB — fail silently
+    }
   }
 
   const legendCounts = displayedGraphData?.nodes.reduce<Record<string, number>>((acc, n) => {
@@ -351,6 +393,23 @@ export default function GraphPage() {
           </div>
         )}
 
+        {/* Contract limit */}
+        {(mode === 'vendor' || mode === 'agency') && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Contract limit</label>
+            <select
+              value={contractLimit}
+              onChange={(e) => setContractLimit(Number(e.target.value))}
+              className="w-full border rounded px-2 py-1 text-sm bg-background"
+            >
+              <option value={200}>Top 200 by value</option>
+              <option value={500}>Top 500 by value</option>
+              <option value={1000}>Top 1,000 by value</option>
+              <option value={5000}>Top 5,000 by value</option>
+            </select>
+          </div>
+        )}
+
         {/* Layout selector + options */}
         <div className="space-y-2">
           <div className="space-y-1">
@@ -454,6 +513,11 @@ export default function GraphPage() {
         {displayedGraphData && displayedGraphData.nodes.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">Nodes</p>
+            {(mode === 'vendor' || mode === 'agency') && !overviewActive && !exploreActive && (
+              <p className="text-xs text-muted-foreground italic">
+                Showing top {contractLimit.toLocaleString()} contracts by value
+              </p>
+            )}
             {Object.entries(legendCounts).map(([type, count]) => (
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
@@ -485,6 +549,23 @@ export default function GraphPage() {
                 </>
               );
             })()}
+          </div>
+        )}
+
+        {/* Expansion hint / controls */}
+        {graphEnabled && !isLoading && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Double-click any node to expand its connections · double-click again to collapse
+            </p>
+            {expansions.size > 0 && (
+              <button
+                className="text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => setExpansions(new Map())}
+              >
+                Clear expansions ({expansions.size})
+              </button>
+            )}
           </div>
         )}
 
@@ -652,7 +733,9 @@ export default function GraphPage() {
             nodes={displayedGraphData.nodes}
             edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
+            expandedIds={[...expansions.keys()]}
             onNodeClick={(node) => { setSelectedNode(node); setSelectedEdge(null); }}
+            onNodeDoubleClick={expandNode}
             onEdgeClick={(edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
             layoutName={layoutName}
             layoutOptions={layoutOptions}

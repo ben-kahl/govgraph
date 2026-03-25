@@ -528,3 +528,381 @@ def test_graph_overview_vendor_node_has_weight(client, mock_neo4j):
     data = response.json()
     vendor_node = next(n for n in data["nodes"] if n["data"]["type"] == "Vendor")
     assert vendor_node["data"]["weight"] == 2_000_000_000.0
+
+
+# ---------------------------------------------------------------------------
+# Agency endpoints
+# ---------------------------------------------------------------------------
+
+def test_get_agencies_empty(client, mock_pg):
+    mock_pg.fetchone.return_value = {"count": 0}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/agencies")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+def test_get_agencies_with_query(client, mock_pg):
+    mock_pg.fetchone.return_value = {"count": 1}
+    mock_pg.fetchall.return_value = [
+        {"id": str(uuid4()), "agency_name": "Department of Defense", "agency_code": "097"}
+    ]
+
+    response = client.get("/agencies?q=defense")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["agency_name"] == "Department of Defense"
+
+
+def test_get_agencies_pagination(client, mock_pg):
+    mock_pg.fetchone.return_value = {"count": 50}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/agencies?page=3&size=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["page"] == 3
+    assert data["size"] == 10
+
+
+def test_get_agencies_size_too_large(client):
+    response = client.get("/agencies?size=200")
+    assert response.status_code == 422
+
+
+def test_get_agency_by_id_success(client, mock_pg):
+    agency_id = uuid4()
+    mock_pg.fetchone.return_value = {
+        "id": str(agency_id),
+        "agency_name": "Department of Defense",
+        "agency_code": "097",
+        "updated_at": "2024-01-01T00:00:00",
+    }
+
+    response = client.get(f"/agencies/{agency_id}")
+    assert response.status_code == 200
+    assert response.json()["agency_name"] == "Department of Defense"
+
+
+def test_get_agency_by_id_not_found(client, mock_pg):
+    mock_pg.fetchone.return_value = None
+    response = client.get(f"/agencies/{uuid4()}")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Contract endpoints
+# ---------------------------------------------------------------------------
+
+def test_get_contracts_empty(client, mock_pg):
+    mock_pg.fetchone.return_value = {"count": 0}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get("/contracts")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+def test_get_contracts_filter_by_vendor(client, mock_pg):
+    vendor_id = uuid4()
+    mock_pg.fetchone.return_value = {"count": 2}
+    mock_pg.fetchall.return_value = []
+
+    response = client.get(f"/contracts?vendor_id={vendor_id}")
+    assert response.status_code == 200
+    # vendor_id must appear in the query params passed to execute
+    params = mock_pg.execute.call_args_list[0][0][1]
+    assert str(vendor_id) in params
+
+
+def test_get_contract_by_id_success(client, mock_pg):
+    contract_id = uuid4()
+    mock_pg.fetchone.return_value = {
+        "id": str(contract_id),
+        "contract_id": "CONT-001",
+        "vendor_id": str(uuid4()),
+        "description": "IT services",
+        "award_type": "A",
+        "obligated_amount": 500_000.0,
+        "signed_date": "2024-01-15",
+        "resolution_method": "exact",
+        "resolution_confidence": 1.0,
+        "created_at": "2024-01-01T00:00:00",
+        "updated_at": "2024-01-01T00:00:00",
+    }
+
+    response = client.get(f"/contracts/{contract_id}")
+    assert response.status_code == 200
+    assert response.json()["contract_id"] == "CONT-001"
+
+
+def test_get_contract_by_id_not_found(client, mock_pg):
+    mock_pg.fetchone.return_value = None
+    response = client.get(f"/contracts/{uuid4()}")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Analytics endpoints — additional coverage
+# ---------------------------------------------------------------------------
+
+def test_insights_summary(client, mock_pg):
+    mock_pg.fetchone.side_effect = [
+        {"count": 1200},
+        {"count": 85},
+        {"count": 45000, "sum": 9_800_000_000.0},
+    ]
+
+    response = client.get("/insights/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_vendors"] == 1200
+    assert data["total_agencies"] == 85
+    assert data["total_contracts"] == 45000
+    assert data["total_obligated_amount"] == 9_800_000_000.0
+
+
+def test_insights_summary_null_sum_returns_zero(client, mock_pg):
+    """When no contracts exist, SUM returns NULL — endpoint must return 0.0."""
+    mock_pg.fetchone.side_effect = [
+        {"count": 0},
+        {"count": 0},
+        {"count": 0, "sum": None},
+    ]
+
+    response = client.get("/insights/summary")
+    assert response.status_code == 200
+    assert response.json()["total_obligated_amount"] == 0.0
+
+
+def test_agency_market_share(client, mock_pg):
+    mock_pg.fetchall.return_value = [
+        {
+            "agency_name": "Department of Defense",
+            "award_count": 500,
+            "total_obligated": 5_000_000_000.0,
+            "market_share_pct": 42.5,
+        }
+    ]
+
+    response = client.get("/insights/agency-market-share")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["agency_name"] == "Department of Defense"
+
+
+def test_agency_market_share_limit_param(client, mock_pg):
+    mock_pg.fetchall.return_value = []
+    response = client.get("/insights/agency-market-share?limit=5")
+    assert response.status_code == 200
+    params = mock_pg.execute.call_args[0][1]
+    assert params == (5,)
+
+
+def test_agency_market_share_limit_too_large(client):
+    response = client.get("/insights/agency-market-share?limit=200")
+    assert response.status_code == 422
+
+
+def test_spending_over_time_invalid_period(client):
+    """period must match ^(month|quarter|year)$ — anything else is 422."""
+    agency_id = uuid4()
+    response = client.get(f"/insights/agency/{agency_id}/spending-over-time?period=week")
+    assert response.status_code == 422
+
+
+def test_award_spikes_z_threshold_too_low(client):
+    """z_threshold must be >= 1.0."""
+    response = client.get("/insights/risk/award-spikes?z_threshold=0.5")
+    assert response.status_code == 422
+
+
+def test_new_entrants_days_too_large(client):
+    """days must be <= 365."""
+    response = client.get("/insights/risk/new-entrants?days=400")
+    assert response.status_code == 422
+
+
+def test_sole_source_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    response = client.get("/insights/risk/sole-source")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_sole_source_invalid_award_type(client):
+    """award_type must match ^[A-Z]{1,2}$ — lowercase or 3+ chars rejected."""
+    response = client.get("/insights/risk/sole-source?award_type=abc")
+    assert response.status_code == 422
+
+
+def test_sole_source_uses_correct_award_type(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    client.get("/insights/risk/sole-source?award_type=B")
+    call_kwargs = mock_neo4j.run.call_args[1]
+    assert call_kwargs["award_type"] == "B"
+
+
+def test_circular_subcontracts_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    response = client.get("/insights/risk/circular-subcontracts")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Graph endpoint — limit parameter validation
+# ---------------------------------------------------------------------------
+
+def test_vendor_graph_default_limit_is_500(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    vendor_id = uuid4()
+    client.get(f"/graph/vendor/{vendor_id}")
+    call_kwargs = mock_neo4j.run.call_args[1]
+    assert call_kwargs["limit"] == 500
+
+
+def test_vendor_graph_custom_limit(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    vendor_id = uuid4()
+    client.get(f"/graph/vendor/{vendor_id}?limit=100")
+    call_kwargs = mock_neo4j.run.call_args[1]
+    assert call_kwargs["limit"] == 100
+
+
+def test_vendor_graph_limit_too_small_rejected(client):
+    response = client.get(f"/graph/vendor/{uuid4()}?limit=5")
+    assert response.status_code == 422
+
+
+def test_vendor_graph_limit_too_large_rejected(client):
+    response = client.get(f"/graph/vendor/{uuid4()}?limit=9999")
+    assert response.status_code == 422
+
+
+def test_vendor_graph_cypher_orders_by_obligated_amount(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    client.get(f"/graph/vendor/{uuid4()}")
+    cypher = mock_neo4j.run.call_args[0][0]
+    assert "obligatedAmount DESC" in cypher
+
+
+def test_agency_graph_default_limit_is_1000(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    agency_id = uuid4()
+    client.get(f"/graph/agency/{agency_id}")
+    call_kwargs = mock_neo4j.run.call_args[1]
+    assert call_kwargs["limit"] == 1000
+
+
+def test_agency_graph_limit_too_small_rejected(client):
+    response = client.get(f"/graph/agency/{uuid4()}?limit=5")
+    assert response.status_code == 422
+
+
+def test_agency_graph_limit_too_large_rejected(client):
+    response = client.get(f"/graph/agency/{uuid4()}?limit=9999")
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Graph endpoint — /graph/contract/{id}
+# ---------------------------------------------------------------------------
+
+def test_contract_graph_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    response = client.get("/graph/contract/some-contract-id")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data
+    assert "edges" in data
+
+
+def test_contract_graph_cypher_queries_all_relationships(client, mock_neo4j):
+    """Cypher must look for AWARDED, AWARDED_CONTRACT, and FUNDED relationships."""
+    mock_neo4j.run.return_value = []
+    client.get("/graph/contract/c1")
+    cypher = mock_neo4j.run.call_args[0][0]
+    assert "AWARDED" in cypher
+    assert "AWARDED_CONTRACT" in cypher
+    assert "FUNDED" in cypher
+
+
+def test_contract_graph_passes_id_to_cypher(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    client.get("/graph/contract/abc-123")
+    call_kwargs = mock_neo4j.run.call_args[1]
+    assert call_kwargs["id"] == "abc-123"
+
+
+def test_contract_graph_returns_connected_nodes(client, mock_neo4j):
+    """Full integration: vendor + contract + agency all appear in the response."""
+    vendor = _make_node(["Vendor"], {"id": "v1", "canonicalName": "ACME"}, element_id="v1")
+    contract = _make_node(
+        ["Contract"],
+        {"id": "c1", "obligatedAmount": 1_000_000, "contractId": "C-001"},
+        element_id="c1",
+    )
+    agency = _make_node(["Agency"], {"id": "a1", "agencyName": "DoD"}, element_id="a1")
+    awarded = _make_rel("AWARDED", vendor, contract, element_id="r1")
+    awarded_contract = _make_rel("AWARDED_CONTRACT", agency, contract, element_id="r2")
+
+    record = _MockRecord({"c": contract, "v": vendor, "ra": awarded, "aw_a": agency, "rac": awarded_contract})
+    mock_neo4j.run.return_value = [record]
+
+    response = client.get("/graph/contract/c1")
+    assert response.status_code == 200
+    data = response.json()
+    node_types = {n["data"]["type"] for n in data["nodes"]}
+    assert "Vendor" in node_types
+    assert "Contract" in node_types
+    assert "Agency" in node_types
+    assert len(data["edges"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Graph endpoint — supply-chain, peers, hubs
+# ---------------------------------------------------------------------------
+
+def test_vendor_supply_chain_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    vendor_id = uuid4()
+    response = client.get(f"/graph/vendor/{vendor_id}/supply-chain")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data and "edges" in data
+
+
+def test_vendor_supply_chain_depth_validation(client):
+    vendor_id = uuid4()
+    # depth must be 1–5
+    assert client.get(f"/graph/vendor/{vendor_id}/supply-chain?depth=0").status_code == 422
+    assert client.get(f"/graph/vendor/{vendor_id}/supply-chain?depth=6").status_code == 422
+
+
+def test_vendor_peers_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    vendor_id = uuid4()
+    response = client.get(f"/graph/vendor/{vendor_id}/peers")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data and "edges" in data
+
+
+def test_graph_hubs_returns_200(client, mock_neo4j):
+    mock_neo4j.run.return_value = []
+    response = client.get("/graph/hubs")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_graph_hubs_min_sub_count_too_low(client):
+    response = client.get("/graph/hubs?min_sub_count=0")
+    assert response.status_code == 422

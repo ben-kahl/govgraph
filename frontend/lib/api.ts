@@ -64,8 +64,12 @@ export const api = {
     soleSource: () => apiFetch<SoleSourceFlag[]>('/insights/risk/sole-source'),
   },
   graph: {
-    vendor: (id: string) => apiFetch<GraphResponse>(`/graph/vendor/${id}`),
-    agency: (id: string) => apiFetch<GraphResponse>(`/graph/agency/${id}`),
+    vendor: (id: string, limit = 500) =>
+      apiFetch<GraphResponse>(`/graph/vendor/${id}?limit=${limit}`),
+    agency: (id: string, limit = 1000) =>
+      apiFetch<GraphResponse>(`/graph/agency/${id}?limit=${limit}`),
+    contract: (id: string) =>
+      apiFetch<GraphResponse>(`/graph/contract/${id}`),
     overview: (limit = 30) => apiFetch<GraphResponse>(`/graph/overview?limit=${limit}`),
     explore: () => apiFetch<GraphResponse>('/graph/explore'),
     path: (from: string, to: string) =>

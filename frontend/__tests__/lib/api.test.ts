@@ -161,10 +161,12 @@ describe('api.analytics', () => {
 });
 
 describe('api.graph', () => {
-  it('vendor() calls /graph/vendor/:id', async () => {
+  it('vendor() calls /graph/vendor/:id with default limit', async () => {
     mockFetch.mockReturnValue(okJson({ nodes: [], edges: [] }));
     await api.graph.vendor('v1');
-    expect(mockFetch).toHaveBeenCalledWith(`${BASE_URL}/graph/vendor/v1`, expect.any(Object));
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('/graph/vendor/v1');
+    expect(url).toContain('limit=500');
   });
 
   it('path() encodes from and to', async () => {
@@ -173,5 +175,11 @@ describe('api.graph', () => {
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain('from=vendor-a');
     expect(url).toContain('to=agency-b');
+  });
+
+  it('contract() calls /graph/contract/:id', async () => {
+    mockFetch.mockReturnValue(okJson({ nodes: [], edges: [] }));
+    await api.graph.contract('c1');
+    expect(mockFetch).toHaveBeenCalledWith(`${BASE_URL}/graph/contract/c1`, expect.any(Object));
   });
 });
