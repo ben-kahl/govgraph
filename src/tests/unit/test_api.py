@@ -195,6 +195,39 @@ def test_spending_over_time(client, mock_pg):
     assert len(data) == 1
     assert data[0]["contract_count"] == 5
 
+    # Verify agency_id is passed twice so subagency contracts are included
+    call_args = mock_pg.execute.call_args
+    params = call_args[0][1]
+    assert params[1] == str(agency_id), "agency_id should be first id param"
+    assert params[2] == str(agency_id), "agency_id should be second id param (awarding_sub_agency_id)"
+
+
+def test_agency_stats(client, mock_pg):
+    mock_pg.fetchone.return_value = {
+        "total_awards": 10,
+        "total_obligated_amount": 5_000_000.0,
+    }
+    mock_pg.fetchall.side_effect = [
+        [{"canonical_name": "TOP VENDOR", "amount": 3_000_000.0, "count": 6}],
+        [{"year": 2023, "amount": 5_000_000.0}],
+    ]
+
+    agency_id = uuid4()
+    response = client.get(f"/agencies/{agency_id}/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_awards"] == 10
+    assert data["total_obligated_amount"] == 5_000_000.0
+    assert len(data["top_vendors"]) == 1
+    assert data["top_vendors"][0]["canonical_name"] == "TOP VENDOR"
+    assert len(data["spending_by_year"]) == 1
+
+    # Verify each query passes agency_id twice for subagency support
+    for call in mock_pg.execute.call_args_list:
+        params = call[0][1]
+        assert params[0] == str(agency_id)
+        assert params[1] == str(agency_id)
+
 
 def test_award_spikes(client, mock_pg):
     mock_pg.fetchall.return_value = [
