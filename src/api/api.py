@@ -632,6 +632,27 @@ async def get_agency_graph(
         return process_graph_result(result)
 
 
+@app.get("/graph/contract/{id}", response_model=GraphResponse)
+async def get_contract_graph(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return a contract node with its directly connected vendors and agencies."""
+    driver = _require_neo4j()
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (c:Contract {id: $id})
+            OPTIONAL MATCH (v:Vendor)-[ra:AWARDED]->(c)
+            OPTIONAL MATCH (aw_a:Agency)-[rac:AWARDED_CONTRACT]->(c)
+            OPTIONAL MATCH (fu_a:Agency)-[rf:FUNDED]->(c)
+            RETURN c, v, ra, aw_a, rac, fu_a, rf
+            """,
+            id=id,
+        )
+        return process_graph_result(result)
+
+
 @app.get("/graph/overview", response_model=GraphResponse)
 async def get_overview_graph(
     limit: int = Query(30, ge=1, le=100),
