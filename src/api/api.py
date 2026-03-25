@@ -572,6 +572,7 @@ async def get_contract_by_id(
 @app.get("/graph/vendor/{id}", response_model=GraphResponse)
 async def get_vendor_graph(
     id: UUID,
+    limit: int = Query(500, ge=10, le=5000),
     current_user: dict = Depends(get_current_user),
 ):
     driver = _require_neo4j()
@@ -580,16 +581,20 @@ async def get_vendor_graph(
             """
             MATCH (v:Vendor {id: $id})
             OPTIONAL MATCH (v)-[ra:AWARDED]->(c:Contract)
+            WITH v, c, ra
+            ORDER BY c.obligatedAmount DESC
+            LIMIT $limit
+            WITH v,
+                 COLLECT(DISTINCT c)  AS contracts,
+                 COLLECT(DISTINCT ra) AS ra_rels
+            UNWIND contracts AS c
             OPTIONAL MATCH (aw_a:Agency)-[rac:AWARDED_CONTRACT]->(c)
             OPTIONAL MATCH (fu_a:Agency)-[rf:FUNDED]->(c)
-            WITH v, c, ra, aw_a, rac, fu_a, rf LIMIT 50
-            WITH v,
-                 COLLECT(DISTINCT c)     AS contracts,
-                 COLLECT(DISTINCT ra)    AS ra_rels,
-                 COLLECT(DISTINCT aw_a)  AS aw_agencies,
-                 COLLECT(DISTINCT rac)   AS rac_rels,
-                 COLLECT(DISTINCT fu_a)  AS fu_agencies,
-                 COLLECT(DISTINCT rf)    AS rf_rels
+            WITH v, contracts, ra_rels,
+                 COLLECT(DISTINCT aw_a) AS aw_agencies,
+                 COLLECT(DISTINCT rac)  AS rac_rels,
+                 COLLECT(DISTINCT fu_a) AS fu_agencies,
+                 COLLECT(DISTINCT rf)   AS rf_rels
             OPTIONAL MATCH (v)-[rs:SUBCONTRACTED]->(sub:Vendor)
             RETURN v, contracts, ra_rels, aw_agencies, rac_rels,
                    fu_agencies, rf_rels,
@@ -597,6 +602,7 @@ async def get_vendor_graph(
                    COLLECT(DISTINCT rs)  AS sub_rels
             """,
             id=str(id),
+            limit=limit,
         )
         return process_graph_result(result)
 
@@ -604,6 +610,7 @@ async def get_vendor_graph(
 @app.get("/graph/agency/{id}", response_model=GraphResponse)
 async def get_agency_graph(
     id: UUID,
+    limit: int = Query(1000, ge=10, le=5000),
     current_user: dict = Depends(get_current_user),
 ):
     driver = _require_neo4j()
@@ -611,12 +618,16 @@ async def get_agency_graph(
         result = session.run(
             """
             MATCH (a:Agency {id: $id})-[r1:AWARDED_CONTRACT]->(c:Contract)<-[r2:AWARDED]-(v:Vendor)
+            WITH a, c, v, r1, r2
+            ORDER BY c.obligatedAmount DESC
+            LIMIT $limit
             OPTIONAL MATCH (a2:Agency)-[rf:FUNDED]->(c)
             OPTIONAL MATCH (v)-[r3:SUBCONTRACTED]->(sub:Vendor)
             OPTIONAL MATCH (child:Agency)-[r4:SUBAGENCY_OF]->(a)
-            RETURN a, c, v, sub, child, a2, r1, r2, rf, r3, r4 LIMIT 200
+            RETURN a, c, v, sub, child, a2, r1, r2, rf, r3, r4
             """,
             id=str(id),
+            limit=limit,
         )
         return process_graph_result(result)
 
