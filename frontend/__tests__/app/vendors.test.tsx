@@ -6,6 +6,7 @@ import type { PaginatedVendors } from '@/types/api';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
 
 jest.mock('@/lib/api', () => ({
@@ -200,5 +201,19 @@ describe('VendorsPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
+  });
+
+  it('pre-populates search from ?q= URL param', async () => {
+    const { useSearchParams } = jest.requireMock('next/navigation') as {
+      useSearchParams: jest.Mock;
+    };
+    useSearchParams.mockReturnValue(new URLSearchParams('q=acme'));
+    api.vendors.list.mockResolvedValue(samplePage);
+    render(<VendorsPage />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(api.vendors.list).toHaveBeenCalledWith('acme', 1, 20, 'total_obligated', 'desc');
+    });
+    const input = screen.getByPlaceholderText('Search vendors…') as HTMLInputElement;
+    expect(input.value).toBe('acme');
   });
 });
