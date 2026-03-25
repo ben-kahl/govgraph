@@ -438,13 +438,47 @@ export default function GraphPage() {
         {/* Selected node panel */}
         {selectedNode && (
           <div className="rounded-lg border p-3 space-y-2">
-            <p className="text-sm font-medium leading-snug">{selectedNode.label}</p>
+            <p className="text-sm font-medium leading-snug">
+              {selectedNode.type === 'Vendor' && selectedNode.properties?.canonicalName
+                ? String(selectedNode.properties.canonicalName)
+                : selectedNode.type === 'Agency' && selectedNode.properties?.agencyName
+                ? String(selectedNode.properties.agencyName)
+                : selectedNode.label}
+            </p>
             <span
               className="inline-block px-2 py-0.5 rounded text-xs text-white"
               style={{ backgroundColor: NODE_COLORS[selectedNode.type] ?? '#94a3b8' }}
             >
               {selectedNode.type}
             </span>
+
+            {selectedNode.type === 'Vendor' && (
+              <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
+                <p><span className="font-medium">ID:</span>{' '}<span className="font-mono break-all">{selectedNode.id}</span></p>
+                {selectedNode.properties?.totalContractValue != null && (
+                  <p><span className="font-medium">Total Obligated:</span>{' '}{formatUSD(Number(selectedNode.properties.totalContractValue))}</p>
+                )}
+                <div className="pt-1">
+                  <Link href={`/vendors/detail?id=${selectedNode.id}`} className="text-primary hover:underline">
+                    View detail →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {selectedNode.type === 'Agency' && (
+              <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
+                <p><span className="font-medium">ID:</span>{' '}<span className="font-mono break-all">{selectedNode.id}</span></p>
+                {!!selectedNode.properties?.agencyCode && (
+                  <p><span className="font-medium">Code:</span>{' '}<span className="font-mono">{String(selectedNode.properties.agencyCode)}</span></p>
+                )}
+                <div className="pt-1">
+                  <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-primary hover:underline">
+                    View detail →
+                  </Link>
+                </div>
+              </div>
+            )}
 
             {selectedNode.type === 'Contract' && (
               <div className="space-y-1.5 pt-1 text-xs text-muted-foreground">
@@ -455,35 +489,23 @@ export default function GraphPage() {
                   <p><span className="font-medium">ID:</span>{' '}<span className="font-mono">{String(selectedNode.properties.contractId)}</span></p>
                 )}
                 {selectedNode.properties?.obligatedAmount != null && (
-                  <p><span className="font-medium">Amount:</span> {formatUSD(Number(selectedNode.properties.obligatedAmount))}</p>
+                  <p><span className="font-medium">Amount:</span>{' '}{formatUSD(Number(selectedNode.properties.obligatedAmount))}</p>
                 )}
                 {!!selectedNode.properties?.signedDate && (
-                  <p><span className="font-medium">Signed:</span> {String(selectedNode.properties.signedDate)}</p>
+                  <p><span className="font-medium">Signed:</span>{' '}{String(selectedNode.properties.signedDate)}</p>
+                )}
+                {!!selectedNode.properties?.awardType && (
+                  <p><span className="font-medium">Type:</span>{' '}{String(selectedNode.properties.awardType)}</p>
                 )}
                 {contractRelated?.vendor && (
-                  <p><span className="font-medium">Vendor:</span> {contractRelated.vendor}</p>
+                  <p><span className="font-medium">Vendor:</span>{' '}{contractRelated.vendor}</p>
                 )}
                 {contractRelated?.awardingAgency && (
-                  <p><span className="font-medium">Awarding:</span> {contractRelated.awardingAgency}</p>
+                  <p><span className="font-medium">Awarding:</span>{' '}{contractRelated.awardingAgency}</p>
                 )}
                 {contractRelated?.fundingAgency && (
-                  <p><span className="font-medium">Funding:</span> {contractRelated.fundingAgency}</p>
+                  <p><span className="font-medium">Funding:</span>{' '}{contractRelated.fundingAgency}</p>
                 )}
-              </div>
-            )}
-
-            {selectedNode.type === 'Vendor' && (
-              <div className="pt-1">
-                <Link href={`/vendors/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
-                  View detail →
-                </Link>
-              </div>
-            )}
-            {selectedNode.type === 'Agency' && (
-              <div className="pt-1">
-                <Link href={`/agencies/detail?id=${selectedNode.id}`} className="text-xs text-primary hover:underline">
-                  View detail →
-                </Link>
               </div>
             )}
           </div>
