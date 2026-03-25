@@ -93,6 +93,7 @@ export default function GraphPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
+  const [expansionRootId, setExpansionRootId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -197,6 +198,7 @@ export default function GraphPage() {
     if (selectedEntities.some((e) => e.id === id)) return;
     setSelectedEntities((prev) => [...prev, { id, name, type: mode as EntityMode }]);
     setExpansions(new Map());
+    setExpansionRootId(null);
     setSearchText('');
     setShowDropdown(false);
     setSelectedNode(null);
@@ -208,6 +210,7 @@ export default function GraphPage() {
   function removeEntity(id: string) {
     setSelectedEntities((prev) => prev.filter((e) => e.id !== id));
     setExpansions(new Map());
+    setExpansionRootId(null);
     setSelectedNode(null);
     setSelectedEdge(null);
   }
@@ -215,6 +218,7 @@ export default function GraphPage() {
   function switchMode(newMode: Mode) {
     setMode(newMode);
     setExpansions(new Map());
+    setExpansionRootId(null);
     setSearchText('');
     setDebouncedSearch('');
     setShowDropdown(false);
@@ -229,6 +233,7 @@ export default function GraphPage() {
     setExploreActive(false);
     setSelectedEntities([]);
     setExpansions(new Map());
+    setExpansionRootId(null);
     setSelectedNode(null);
     setSelectedEdge(null);
   }
@@ -238,6 +243,7 @@ export default function GraphPage() {
     setOverviewActive(false);
     setSelectedEntities([]);
     setExpansions(new Map());
+    setExpansionRootId(null);
     setSelectedNode(null);
     setSelectedEdge(null);
   }
@@ -245,6 +251,7 @@ export default function GraphPage() {
   async function expandNode(node: ClickedNode) {
     // Toggle: if already expanded, collapse by removing its data
     if (expansions.has(node.id)) {
+      setExpansionRootId(null);
       setExpansions((prev) => {
         const next = new Map(prev);
         next.delete(node.id);
@@ -261,6 +268,7 @@ export default function GraphPage() {
       } else {
         result = await api.graph.contract(node.id);
       }
+      setExpansionRootId(node.id);
       setExpansions((prev) => new Map(prev).set(node.id, result));
     } catch {
       // node may not exist in graph DB — fail silently
@@ -561,7 +569,7 @@ export default function GraphPage() {
             {expansions.size > 0 && (
               <button
                 className="text-xs text-muted-foreground hover:text-destructive"
-                onClick={() => setExpansions(new Map())}
+                onClick={() => { setExpansions(new Map()); setExpansionRootId(null); }}
               >
                 Clear expansions ({expansions.size})
               </button>
@@ -734,6 +742,7 @@ export default function GraphPage() {
             edges={displayedGraphData.edges}
             highlightedIds={highlightedIds}
             expandedIds={[...expansions.keys()]}
+            expansionRootId={expansionRootId}
             onNodeClick={(node) => { setSelectedNode(node); setSelectedEdge(null); }}
             onNodeDoubleClick={expandNode}
             onEdgeClick={(edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
