@@ -123,8 +123,8 @@ export function CytoscapeGraph({
   const layoutConfig = useMemo(() => {
     const cfg: Record<string, unknown> = { name: layoutName };
     if (layoutName === 'fcose' || layoutName === 'cose') {
-      if (layoutOptions?.nodeRepulsion !== undefined) cfg.nodeRepulsion = layoutOptions.nodeRepulsion;
-      if (layoutOptions?.idealEdgeLength !== undefined) cfg.idealEdgeLength = layoutOptions.idealEdgeLength;
+      cfg.nodeRepulsion = layoutOptions?.nodeRepulsion ?? 8000;
+      cfg.idealEdgeLength = layoutOptions?.idealEdgeLength ?? 100;
     } else if (layoutName === 'cola') {
       // Cola uses edgeLength instead of idealEdgeLength; animate:false avoids
       // re-layout thrash on stylesheet updates
@@ -342,8 +342,12 @@ export function CytoscapeGraph({
         // Place new nodes in concentric rings around the (moved) root
         placeInRings(cy, newCenter, addedIds);
 
+        // Center the view on the expansion root + its new neighbors
+        const expansionEles = cy.getElementById(rootId!).union(
+          cy.nodes().filter((n) => addedSet.has(n.id()))
+        );
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cy.animate({ fit: { eles: cy.elements() as any, padding: 60 } } as any, { duration: 400 });
+        cy.animate({ fit: { eles: expansionEles as any, padding: 80 } } as any, { duration: 400 });
       } else {
         // No known root — re-run full layout
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
