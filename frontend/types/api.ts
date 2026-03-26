@@ -106,8 +106,15 @@ export interface VelocityEntry {
 export interface AgencyStats {
   total_awards: number;
   total_obligated_amount: number;
-  top_vendors: { canonical_name: string; amount: number; count: number }[];
+  top_vendors: { vendor_id: string; canonical_name: string; amount: number; count: number }[];
   spending_by_year: { year: number; amount: number }[];
+}
+
+export interface VendorStats {
+  total_awards: number;
+  total_obligated_amount: number;
+  top_agencies: { agency_id: string; agency_name: string; amount: number; count: number }[];
+  award_count_by_year: { year: number; amount: number; count: number }[];
 }
 
 export interface ConcentrationMetric {

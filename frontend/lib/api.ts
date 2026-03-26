@@ -16,6 +16,7 @@ import type {
   AwardTypeBreakdown,
   VelocityEntry,
   AgencyStats,
+  VendorStats,
   ConcentrationMetric,
 } from '@/types/api';
 
@@ -45,6 +46,7 @@ export const api = {
     getById: (id: string) => apiFetch<Vendor>(`/vendors/${id}`),
     awardTypes: (id: string) => apiFetch<AwardTypeBreakdown[]>(`/insights/vendor/${id}/award-types`),
     velocity: (id: string) => apiFetch<VelocityEntry[]>(`/insights/vendor/${id}/velocity`),
+    stats: (id: string) => apiFetch<VendorStats>(`/vendors/${id}/stats`),
   },
   agencies: {
     list: (q?: string, page = 1, size = 20) =>
