@@ -123,8 +123,8 @@ export function CytoscapeGraph({
   const layoutConfig = useMemo(() => {
     const cfg: Record<string, unknown> = { name: layoutName };
     if (layoutName === 'fcose' || layoutName === 'cose') {
-      if (layoutOptions?.nodeRepulsion !== undefined) cfg.nodeRepulsion = layoutOptions.nodeRepulsion;
-      if (layoutOptions?.idealEdgeLength !== undefined) cfg.idealEdgeLength = layoutOptions.idealEdgeLength;
+      cfg.nodeRepulsion = layoutOptions?.nodeRepulsion ?? 8000;
+      cfg.idealEdgeLength = layoutOptions?.idealEdgeLength ?? 100;
     } else if (layoutName === 'cola') {
       // Cola uses edgeLength instead of idealEdgeLength; animate:false avoids
       // re-layout thrash on stylesheet updates
