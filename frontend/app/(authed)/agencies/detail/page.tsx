@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
+import Link from 'next/link';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 import type { ClickedNode } from '@/components/CytoscapeGraph';
 import { SpendingChart } from '@/components/SpendingChart';
@@ -209,8 +210,12 @@ function AgencyDetail() {
               </TableHeader>
               <TableBody>
                 {topVendors.map((v) => (
-                  <TableRow key={v.canonical_name}>
-                    <TableCell className="font-medium">{v.canonical_name}</TableCell>
+                  <TableRow key={v.vendor_id}>
+                    <TableCell className="font-medium">
+                      <Link href={`/vendors/detail?id=${v.vendor_id}`} className="text-primary hover:underline">
+                        {v.canonical_name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-right">{v.count.toLocaleString()}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatUSD(v.amount)}</TableCell>
                   </TableRow>

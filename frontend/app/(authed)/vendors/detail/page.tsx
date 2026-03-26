@@ -7,10 +7,14 @@ import {
 } from 'recharts';
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
+import Link from 'next/link';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
 import type { ClickedNode } from '@/components/CytoscapeGraph';
 import { SpendingChart } from '@/components/SpendingChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
 
 function mergeGraphResponses(responses: GraphResponse[]): GraphResponse {
@@ -61,6 +65,12 @@ function VendorDetail() {
   const { data: velocity } = useQuery({
     queryKey: ['vendorVelocity', id],
     queryFn: () => api.vendors.velocity(id),
+    enabled: !!id,
+  });
+
+  const { data: vendorStats } = useQuery({
+    queryKey: ['vendorStats', id],
+    queryFn: () => api.vendors.stats(id),
     enabled: !!id,
   });
 
@@ -177,6 +187,40 @@ function VendorDetail() {
           </Card>
         )}
       </div>
+
+      {/* Top Agencies */}
+      {vendorStats && vendorStats.top_agencies.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Top Agencies</CardTitle>
+            <p className="text-xs text-muted-foreground">Highest-value agencies by contract spend with this vendor</p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Agency</TableHead>
+                  <TableHead className="text-right">Awards</TableHead>
+                  <TableHead className="text-right">Total Obligated</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vendorStats.top_agencies.map((a) => (
+                  <TableRow key={a.agency_id}>
+                    <TableCell className="font-medium">
+                      <Link href={`/agencies/detail?id=${a.agency_id}`} className="text-primary hover:underline">
+                        {a.agency_name}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right">{a.count.toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{formatUSD(a.amount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Graph */}
       <Card>
