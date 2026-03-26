@@ -3,10 +3,12 @@ import { api } from '@/lib/api';
 // Must be before any import that triggers aws-amplify/auth
 jest.mock('aws-amplify/auth', () => ({
   fetchAuthSession: jest.fn(),
+  signOut: jest.fn(),
 }));
 
-const { fetchAuthSession } = jest.requireMock('aws-amplify/auth') as {
+const { fetchAuthSession, signOut } = jest.requireMock('aws-amplify/auth') as {
   fetchAuthSession: jest.Mock;
+  signOut: jest.Mock;
 };
 
 const mockFetch = jest.fn();
@@ -41,9 +43,25 @@ describe('apiFetch — Authorization header', () => {
     );
   });
 
-  it('throws when response is not ok', async () => {
+  it('signs out and redirects on 401, then throws "Session expired"', async () => {
+    // jsdom marks window.location as non-configurable so we cannot intercept
+    // the href assignment.  Suppress the resulting "not implemented: navigation"
+    // console.error — the assignment still executes in production code.
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    signOut.mockResolvedValue(undefined);
     mockFetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) });
-    await expect(api.vendors.list()).rejects.toThrow('API 401');
+
+    await expect(api.vendors.list()).rejects.toThrow('Session expired');
+    expect(signOut).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+
+  it('throws on other non-ok responses without signing out', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    await expect(api.vendors.list()).rejects.toThrow('API 500');
+    expect(signOut).not.toHaveBeenCalled();
   });
 });
 

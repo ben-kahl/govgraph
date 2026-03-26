@@ -92,7 +92,7 @@ resource "aws_cognito_user_pool_client" "frontend" {
   ]
 
   access_token_validity  = 60 # minutes
-  refresh_token_validity = 30 # days
+  refresh_token_validity = 7  # days
   token_validity_units {
     access_token  = "minutes"
     refresh_token = "days"

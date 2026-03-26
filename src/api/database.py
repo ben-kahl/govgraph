@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import boto3
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -17,8 +18,15 @@ DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN")
 # Neo4j Config
 NEO4J_SECRET_ARN = os.environ.get("NEO4J_SECRET_ARN")
 
+# Credential cache TTL — refresh Secrets Manager values once per hour so
+# rotated credentials are picked up without requiring a Lambda cold start.
+_CRED_TTL = 3600
+
 _db_creds = None
+_db_creds_ts: float = 0.0
+
 _neo4j_creds = None
+_neo4j_creds_ts: float = 0.0
 _neo4j_driver = None
 
 
@@ -31,9 +39,11 @@ def get_secret(secret_arn):
 
 
 def get_pg_connection():
-    global _db_creds
-    if _db_creds is None:
+    global _db_creds, _db_creds_ts
+    if _db_creds is None or (time.time() - _db_creds_ts) > _CRED_TTL:
         _db_creds = get_secret(DB_SECRET_ARN)
+        _db_creds_ts = time.time()
+        logger.debug("database: pg credentials refreshed from Secrets Manager")
 
     return psycopg2.connect(
         host=DB_HOST,
@@ -46,10 +56,16 @@ def get_pg_connection():
 
 
 def get_neo4j_driver():
-    global _neo4j_creds, _neo4j_driver
-    if _neo4j_driver is None:
-        if _neo4j_creds is None:
-            _neo4j_creds = get_secret(NEO4J_SECRET_ARN)
+    global _neo4j_creds, _neo4j_creds_ts, _neo4j_driver
+    creds_expired = (time.time() - _neo4j_creds_ts) > _CRED_TTL
+    if _neo4j_driver is None or creds_expired:
+        if creds_expired and _neo4j_driver is not None:
+            _neo4j_driver.close()
+            _neo4j_driver = None
+
+        _neo4j_creds = get_secret(NEO4J_SECRET_ARN)
+        _neo4j_creds_ts = time.time()
+        logger.debug("database: neo4j credentials refreshed from Secrets Manager")
 
         uri = _neo4j_creds.get('uri') or _neo4j_creds.get('NEO4J_URI')
         user = _neo4j_creds.get(

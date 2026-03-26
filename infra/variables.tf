@@ -112,3 +112,10 @@ variable "allowed_origins" {
   type        = string
   default     = "https://main.d2680fpqajv7av.amplifyapp.com"
 }
+
+variable "redis_url" {
+  description = "Upstash Redis connection URL for API rate limiting (rediss://default:<token>@<host>:<port>). Get from https://console.upstash.com."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

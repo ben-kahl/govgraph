@@ -1,0 +1,37 @@
+customHeaders:
+  - pattern: '**/*'
+    headers:
+      # Prevent clickjacking
+      - key: 'X-Frame-Options'
+        value: 'DENY'
+      # Prevent MIME-type sniffing
+      - key: 'X-Content-Type-Options'
+        value: 'nosniff'
+      # Enforce HTTPS for 2 years (includeSubDomains + preload-ready)
+      - key: 'Strict-Transport-Security'
+        value: 'max-age=63072000; includeSubDomains; preload'
+      # Limit referrer information sent to third parties
+      - key: 'Referrer-Policy'
+        value: 'strict-origin-when-cross-origin'
+      # Disable browser features not used by the app
+      - key: 'Permissions-Policy'
+        value: 'geolocation=(), microphone=(), camera=()'
+      # Content Security Policy — permissive baseline, harden per-route later.
+      #
+      # Intentionally permissive choices (to revisit):
+      #   script-src 'unsafe-eval'  — Next.js chunk loader + Cytoscape layouts
+      #   style-src  'unsafe-inline' — Tailwind CSS + shadcn/ui inline styles
+      #   connect-src https:         — covers API Gateway, Cognito, and any CDN
+      #
+      - key: 'Content-Security-Policy'
+        value: >-
+          default-src 'self';
+          script-src 'self' 'unsafe-eval';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob:;
+          font-src 'self' data:;
+          connect-src 'self' https:;
+          worker-src blob:;
+          frame-ancestors 'none';
+          object-src 'none';
+          base-uri 'self';

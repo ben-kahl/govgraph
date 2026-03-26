@@ -1,4 +1,4 @@
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { fetchAuthSession, signOut } from 'aws-amplify/auth';
 import type {
   PaginatedVendors,
   Vendor,
@@ -33,6 +33,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+  if (res.status === 401) {
+    try {
+      await signOut();
+    } catch {
+      // ignore — session may already be gone
+    }
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
   if (!res.ok) throw new Error(`API ${res.status} on ${path}`);
   return res.json();
 }

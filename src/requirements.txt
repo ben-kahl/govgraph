@@ -7,3 +7,5 @@ mangum
 pydantic
 python-jose[cryptography]
 httpx
+slowapi
+redis
