@@ -125,7 +125,7 @@ function AgencyDetail() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={formatUSD} tick={{ fontSize: 11 }} width={72} />
-                  <Tooltip formatter={(v: number) => [formatUSD(v), 'Obligated']} />
+                  <Tooltip formatter={(v) => [formatUSD(v as number), 'Obligated']} />
                   <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

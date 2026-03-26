@@ -119,7 +119,7 @@ function VendorDetail() {
                   <XAxis type="number" tickFormatter={formatUSD} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="name" width={28} tick={{ fontSize: 12 }} />
                   <Tooltip
-                    formatter={(v: number) => [formatUSD(v), 'Total Obligated']}
+                    formatter={(v) => [formatUSD(v as number), 'Total Obligated']}
                     labelFormatter={(l) => `Type: ${l}`}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
