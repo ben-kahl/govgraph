@@ -21,16 +21,24 @@ export function MarketShareChart({
   return (
     <ResponsiveContainer width="100%" height={400}>
       <BarChart data={data} margin={{ top: 8, right: 24, left: 16, bottom: 80 }}>
-        <CartesianGrid strokeDasharray="3 3" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis
           dataKey={nameKey}
-          tick={{ fontSize: 11 }}
+          tick={{ fontSize: 11, fill: 'currentColor' }}
           angle={-40}
           textAnchor="end"
           interval={0}
         />
-        <YAxis tickFormatter={formatUSD} />
-        <Tooltip formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''} />
+        <YAxis tickFormatter={formatUSD} tick={{ fill: 'currentColor' }} />
+        <Tooltip
+          formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''}
+          contentStyle={{
+            background: 'var(--popover)',
+            border: '1px solid var(--border)',
+            color: 'var(--popover-foreground)',
+            borderRadius: '6px',
+          }}
+        />
         <Bar dataKey="total_obligated" fill="#3b82f6" name="Total Obligated" />
       </BarChart>
     </ResponsiveContainer>

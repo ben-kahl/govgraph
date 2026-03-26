@@ -115,12 +115,18 @@ function VendorDetail() {
                   data={typeChartData}
                   margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={formatUSD} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" width={28} tick={{ fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                  <XAxis type="number" tickFormatter={formatUSD} tick={{ fontSize: 11, fill: 'currentColor' }} />
+                  <YAxis type="category" dataKey="name" width={28} tick={{ fontSize: 12, fill: 'currentColor' }} />
                   <Tooltip
                     formatter={(v) => [formatUSD(v as number), 'Total Obligated']}
                     labelFormatter={(l) => `Type: ${l}`}
+                    contentStyle={{
+                      background: 'var(--popover)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--popover-foreground)',
+                      borderRadius: '6px',
+                    }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                 </BarChart>

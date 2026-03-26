@@ -122,10 +122,18 @@ function AgencyDetail() {
             <CardContent>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={spendByYear} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={formatUSD} tick={{ fontSize: 11 }} width={72} />
-                  <Tooltip formatter={(v) => [formatUSD(v as number), 'Obligated']} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'currentColor' }} />
+                  <YAxis tickFormatter={formatUSD} tick={{ fontSize: 11, fill: 'currentColor' }} width={72} />
+                  <Tooltip
+                    formatter={(v) => [formatUSD(v as number), 'Obligated']}
+                    contentStyle={{
+                      background: 'var(--popover)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--popover-foreground)',
+                      borderRadius: '6px',
+                    }}
+                  />
                   <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

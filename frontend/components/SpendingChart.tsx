@@ -15,10 +15,18 @@ export function SpendingChart({ data }: { data: SpendingTimeSeries[] }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={data} margin={{ top: 8, right: 24, left: 16, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-        <YAxis tickFormatter={formatUSD} />
-        <Tooltip formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        <XAxis dataKey="period" tick={{ fontSize: 11, fill: 'currentColor' }} />
+        <YAxis tickFormatter={formatUSD} tick={{ fill: 'currentColor' }} />
+        <Tooltip
+          formatter={(v: number | undefined) => v != null ? formatUSD(v) : ''}
+          contentStyle={{
+            background: 'var(--popover)',
+            border: '1px solid var(--border)',
+            color: 'var(--popover-foreground)',
+            borderRadius: '6px',
+          }}
+        />
         <Line
           type="monotone"
           dataKey="total_obligated"
