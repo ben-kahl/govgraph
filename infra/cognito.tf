@@ -82,8 +82,14 @@ resource "aws_cognito_user_pool_client" "frontend" {
     local.google_enabled ? ["Google"] : []
   )
 
-  callback_urls = ["${var.allowed_origins}/login"]
-  logout_urls   = [var.allowed_origins]
+  callback_urls = [
+    "${var.allowed_origins}/login",
+    "http://localhost:3000/login",
+  ]
+  logout_urls = [
+    var.allowed_origins,
+    "http://localhost:3000",
+  ]
 
   access_token_validity  = 60 # minutes
   refresh_token_validity = 30 # days

@@ -3,6 +3,7 @@ import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { Footer } from '@/components/Footer';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 const formFields = {
@@ -66,14 +67,17 @@ export default function LoginPage() {
   }, [router]);
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Authenticator
-        socialProviders={['google']}
-        formFields={formFields}
-        components={components}
-      >
-        <RedirectWhenAuthenticated />
-      </Authenticator>
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-1 flex items-center justify-center">
+        <Authenticator
+          socialProviders={['google']}
+          formFields={formFields}
+          components={components}
+        >
+          <RedirectWhenAuthenticated />
+        </Authenticator>
+      </div>
+      <Footer />
     </div>
   );
 }
