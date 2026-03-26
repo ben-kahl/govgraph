@@ -1,5 +1,5 @@
 'use client';
-import { Suspense } from 'react';
+import { Suspense, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -8,8 +8,26 @@ import {
 import { api } from '@/lib/api';
 import { formatUSD } from '@/lib/utils';
 import { CytoscapeGraph } from '@/components/CytoscapeGraph';
+import type { ClickedNode } from '@/components/CytoscapeGraph';
 import { SpendingChart } from '@/components/SpendingChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
+
+function mergeGraphResponses(responses: GraphResponse[]): GraphResponse {
+  const seenNodes = new Set<string>();
+  const seenEdges = new Set<string>();
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  for (const r of responses) {
+    for (const n of r.nodes) {
+      if (!seenNodes.has(n.data.id)) { seenNodes.add(n.data.id); nodes.push(n); }
+    }
+    for (const e of r.edges) {
+      if (!seenEdges.has(e.data.id)) { seenEdges.add(e.data.id); edges.push(e); }
+    }
+  }
+  return { nodes, edges };
+}
 
 function KpiCard({ title, value }: { title: string; value: string }) {
   return (
@@ -25,6 +43,8 @@ function KpiCard({ title, value }: { title: string; value: string }) {
 function VendorDetail() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id') ?? '';
+  const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
+  const [expansionRootId, setExpansionRootId] = useState<string | null>(null);
 
   const { data: vendor, isLoading: vLoading } = useQuery({
     queryKey: ['vendor', id],
@@ -49,6 +69,28 @@ function VendorDetail() {
     queryFn: () => api.graph.vendor(id),
     enabled: !!id,
   });
+
+  const allGraphData = useMemo(() => {
+    if (!graph) return undefined;
+    if (expansions.size === 0) return graph;
+    return mergeGraphResponses([graph, ...expansions.values()]);
+  }, [graph, expansions]);
+
+  async function expandNode(node: ClickedNode) {
+    if (expansions.has(node.id)) {
+      setExpansionRootId(null);
+      setExpansions((prev) => { const next = new Map(prev); next.delete(node.id); return next; });
+      return;
+    }
+    try {
+      let result: GraphResponse;
+      if (node.type === 'Vendor') result = await api.graph.vendor(node.id);
+      else if (node.type === 'Agency') result = await api.graph.agency(node.id);
+      else result = await api.graph.contract(node.id);
+      setExpansionRootId(node.id);
+      setExpansions((prev) => new Map(prev).set(node.id, result));
+    } catch { /* fail silently */ }
+  }
 
   if (vLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (!vendor) return <p className="text-destructive">Vendor not found.</p>;
@@ -139,12 +181,37 @@ function VendorDetail() {
       {/* Graph */}
       <Card>
         <CardHeader>
-          <CardTitle>Relationship Graph</CardTitle>
-          <p className="text-xs text-muted-foreground">Top contracts by value and connected agencies</p>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle>Relationship Graph</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Top contracts by value and connected agencies</p>
+            </div>
+            {expansions.size > 0 && (
+              <button
+                className="text-xs text-muted-foreground hover:text-destructive shrink-0"
+                onClick={() => { setExpansions(new Map()); setExpansionRootId(null); }}
+              >
+                Clear expansions ({expansions.size})
+              </button>
+            )}
+          </div>
+          {graph && (
+            <p className="text-xs text-muted-foreground italic">
+              Double-click any node to expand its connections · double-click again to collapse
+            </p>
+          )}
         </CardHeader>
         <CardContent style={{ height: 500 }}>
           {gLoading && <p className="text-muted-foreground">Loading graph…</p>}
-          {graph && <CytoscapeGraph nodes={graph.nodes} edges={graph.edges} />}
+          {allGraphData && allGraphData.nodes.length > 0 && (
+            <CytoscapeGraph
+              nodes={allGraphData.nodes}
+              edges={allGraphData.edges}
+              expandedIds={[...expansions.keys()]}
+              expansionRootId={expansionRootId}
+              onNodeDoubleClick={expandNode}
+            />
+          )}
         </CardContent>
       </Card>
     </div>
