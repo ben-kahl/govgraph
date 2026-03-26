@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import { Nav } from '@/components/Nav';
+import { Footer } from '@/components/Footer';
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -26,9 +27,10 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div>
+    <div className="min-h-screen flex flex-col">
       <Nav />
-      <main className="p-6">{children}</main>
+      <main className="p-6 flex-1">{children}</main>
+      <Footer />
     </div>
   );
 }
