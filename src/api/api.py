@@ -352,11 +352,11 @@ async def get_vendor_stats(
 
             cur.execute(
                 """
-                SELECT a.agency_name, SUM(c.obligated_amount) as amount, COUNT(*) as count
+                SELECT a.id::text as agency_id, a.agency_name, SUM(c.obligated_amount) as amount, COUNT(*) as count
                 FROM contracts c
                 JOIN agencies a ON c.agency_id = a.id
                 WHERE c.vendor_id = %s
-                GROUP BY a.agency_name
+                GROUP BY a.id, a.agency_name
                 ORDER BY amount DESC
                 LIMIT 5
                 """,
@@ -464,11 +464,11 @@ async def get_agency_stats(
 
             cur.execute(
                 """
-                SELECT v.canonical_name, SUM(c.obligated_amount) as amount, COUNT(*) as count
+                SELECT v.id::text as vendor_id, v.canonical_name, SUM(c.obligated_amount) as amount, COUNT(*) as count
                 FROM contracts c
                 JOIN vendors v ON c.vendor_id = v.id
                 WHERE (c.agency_id = %s OR c.awarding_sub_agency_id = %s)
-                GROUP BY v.canonical_name
+                GROUP BY v.id, v.canonical_name
                 ORDER BY amount DESC
                 LIMIT 5
                 """,
