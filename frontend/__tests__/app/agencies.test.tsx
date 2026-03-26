@@ -4,8 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AgenciesPage from '@/app/(authed)/agencies/page';
 import type { PaginatedAgencies } from '@/types/api';
 
+const { useSearchParams } = jest.requireMock('next/navigation') as {
+  useSearchParams: jest.Mock;
+};
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
 
 jest.mock('@/lib/api', () => ({
@@ -36,7 +41,10 @@ const samplePage: PaginatedAgencies = {
 };
 
 describe('AgenciesPage', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useSearchParams.mockReturnValue(new URLSearchParams());
+  });
 
   it('shows loading state initially', () => {
     api.agencies.list.mockReturnValue(new Promise(() => {}));
@@ -111,6 +119,17 @@ describe('AgenciesPage', () => {
     render(<AgenciesPage />, { wrapper: makeWrapper() });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    });
+  });
+
+  it('pre-populates search from ?q= URL param', async () => {
+    useSearchParams.mockReturnValue(new URLSearchParams('q=defense'));
+    api.agencies.list.mockResolvedValue(samplePage);
+    render(<AgenciesPage />, { wrapper: makeWrapper() });
+
+    expect(screen.getByPlaceholderText('Search agencies…')).toHaveValue('defense');
+    await waitFor(() => {
+      expect(api.agencies.list).toHaveBeenCalledWith('defense', 1);
     });
   });
 

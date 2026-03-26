@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -14,9 +15,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-export default function AgenciesPage() {
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
+function AgenciesPageInner() {
+  const searchParams = useSearchParams();
+  const initialQ = searchParams.get('q') ?? '';
+  const [search, setSearch] = useState(initialQ);
+  const [query, setQuery] = useState(initialQ);
   const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
@@ -89,5 +92,13 @@ export default function AgenciesPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function AgenciesPage() {
+  return (
+    <Suspense>
+      <AgenciesPageInner />
+    </Suspense>
   );
 }
