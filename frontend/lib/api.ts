@@ -13,6 +13,10 @@ import type {
   SoleSourceFlag,
   GraphResponse,
   HubVendor,
+  AwardTypeBreakdown,
+  VelocityEntry,
+  AgencyStats,
+  ConcentrationMetric,
 } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -39,6 +43,8 @@ export const api = {
         `/vendors?page=${page}&size=${size}&sort_by=${sortBy}&sort_dir=${sortDir}${q ? `&q=${encodeURIComponent(q)}` : ''}`
       ),
     getById: (id: string) => apiFetch<Vendor>(`/vendors/${id}`),
+    awardTypes: (id: string) => apiFetch<AwardTypeBreakdown[]>(`/insights/vendor/${id}/award-types`),
+    velocity: (id: string) => apiFetch<VelocityEntry[]>(`/insights/vendor/${id}/velocity`),
   },
   agencies: {
     list: (q?: string, page = 1, size = 20) =>
@@ -46,6 +52,8 @@ export const api = {
         `/agencies?page=${page}&size=${size}${q ? `&q=${encodeURIComponent(q)}` : ''}`
       ),
     getById: (id: string) => apiFetch<Agency>(`/agencies/${id}`),
+    stats: (id: string) => apiFetch<AgencyStats>(`/agencies/${id}/stats`),
+    vendorConcentration: (id: string) => apiFetch<ConcentrationMetric[]>(`/insights/agency/${id}/vendor-concentration`),
   },
   analytics: {
     summary: () => apiFetch<SummaryStats>('/insights/summary'),

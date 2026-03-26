@@ -90,6 +90,31 @@ export interface SoleSourceFlag {
   total_spend: number;
 }
 
+export interface AwardTypeBreakdown {
+  award_type: string | null;
+  count: number;
+  total_value: number;
+}
+
+export interface VelocityEntry {
+  quarter: string;
+  awards: number;
+  total: number;
+  avg_award_size: number;
+}
+
+export interface AgencyStats {
+  total_awards: number;
+  total_obligated_amount: number;
+  top_vendors: { canonical_name: string; amount: number; count: number }[];
+  spending_by_year: { year: number; amount: number }[];
+}
+
+export interface ConcentrationMetric {
+  agency_name: string;
+  hhi: number;
+}
+
 export interface GraphNodeData {
   id: string;
   label: string;
