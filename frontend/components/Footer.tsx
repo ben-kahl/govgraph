@@ -11,7 +11,7 @@ export function Footer() {
       <span>
         Built by{' '}
         <a
-          href="https://github.com/ben-kahl/govgraph"
+          href="https://linkedin.com/in/ben-kahl"
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-foreground hover:underline"
