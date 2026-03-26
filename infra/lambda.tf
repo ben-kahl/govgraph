@@ -309,6 +309,7 @@ module "api_lambda" {
     COGNITO_USER_POOL_ID = aws_cognito_user_pool.main.id
     COGNITO_REGION       = "us-east-1"
     ALLOWED_ORIGINS      = var.allowed_origins
+    REDIS_URL            = var.redis_url
   }
 
   attach_policy_json = true
