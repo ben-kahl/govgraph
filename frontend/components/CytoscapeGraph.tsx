@@ -10,6 +10,38 @@ import type { GraphNode, GraphEdge } from '@/types/api';
 
 // Register layout plugins once at module load (idempotent)
 cytoscape.use(fcose);
+
+/** Pixels between concentric rings when placing expanded nodes. */
+const RING_SPACING = 90;
+/** Min arc-length between nodes on the same ring (px). */
+const NODE_ARC_SPACING = 65;
+
+/**
+ * Distribute `ids` into concentric rings around `center`.
+ * Ring 1 starts at RING_SPACING px; each subsequent ring adds RING_SPACING.
+ * Capacity per ring scales with circumference so nodes stay ~NODE_ARC_SPACING apart.
+ */
+function placeInRings(cy: Core, center: { x: number; y: number }, ids: string[]) {
+  let placed = 0;
+  let ring = 1;
+  while (placed < ids.length) {
+    const r = RING_SPACING * ring;
+    const capacity = Math.max(6, Math.floor((2 * Math.PI * r) / NODE_ARC_SPACING));
+    const batch = ids.slice(placed, placed + capacity);
+    batch.forEach((id, i) => {
+      const angle = (2 * Math.PI * i) / batch.length - Math.PI / 2;
+      const el = cy.getElementById(id);
+      if (el.length > 0) {
+        el.position({
+          x: center.x + r * Math.cos(angle),
+          y: center.y + r * Math.sin(angle),
+        });
+      }
+    });
+    placed += batch.length;
+    ring++;
+  }
+}
 cytoscape.use(cola);
 cytoscape.use(dagre);
 
@@ -272,31 +304,48 @@ export function CytoscapeGraph({
 
     const currentIds = new Set(nodes.map((n) => n.data.id));
     const prevIds = prevNodeIdsRef.current;
-
     const addedIds = nodes.map((n) => n.data.id).filter((id) => !prevIds.has(id));
     const hadExisting = prevIds.size > 0;
 
     if (addedIds.length > 0 && hadExisting) {
-      // New nodes added — arrange in a ring around the expansion root if known
       const rootId = expansionRootIdRef.current;
       const rootEl = rootId ? cy.getElementById(rootId) : null;
+
       if (rootEl && rootEl.length > 0) {
-        const center = rootEl.position();
-        const radius = Math.max(200, addedIds.length * 30);
-        addedIds.forEach((id, i) => {
-          const angle = (2 * Math.PI * i) / addedIds.length - Math.PI / 2;
-          const el = cy.getElementById(id);
-          if (el.length > 0) {
-            el.position({
-              x: center.x + radius * Math.cos(angle),
-              y: center.y + radius * Math.sin(angle),
-            });
-          }
-        });
+        // Existing nodes (excluding the root and the newly added ones)
+        const addedSet = new Set(addedIds);
+        const existingNodes = cy.nodes().filter(
+          (n) => n.id() !== rootId && !addedSet.has(n.id())
+        );
+
+        // Move the root away from the existing cluster to create space for the ring
+        let newCenter = rootEl.position();
+        if (existingNodes.length > 0) {
+          const bb = existingNodes.boundingBox({});
+          const centroidX = (bb.x1 + bb.x2) / 2;
+          const centroidY = (bb.y1 + bb.y2) / 2;
+          const rootPos = rootEl.position();
+          const dx = rootPos.x - centroidX;
+          const dy = rootPos.y - centroidY;
+          const dist = Math.hypot(dx, dy) || 1;
+          // Estimate how many rings we'll need, move root far enough to clear them
+          const ringCount = Math.ceil(addedIds.length / 8) + 1;
+          const expansionRadius = RING_SPACING * ringCount;
+          const moveBy = expansionRadius + 80;
+          newCenter = {
+            x: rootPos.x + (dx / dist) * moveBy,
+            y: rootPos.y + (dy / dist) * moveBy,
+          };
+          rootEl.position(newCenter);
+        }
+
+        // Place new nodes in concentric rings around the (moved) root
+        placeInRings(cy, newCenter, addedIds);
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         cy.animate({ fit: { eles: cy.elements() as any, padding: 60 } } as any, { duration: 400 });
       } else {
-        // Fallback: no known root, re-run the full layout
+        // No known root — re-run full layout
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         cy.layout(layoutConfigRef.current as any).run();
       }
