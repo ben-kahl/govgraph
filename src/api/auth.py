@@ -64,7 +64,6 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
             token,
             key,
             algorithms=["RS256"],
-            options={"verify_at_hash": False},
         )
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")

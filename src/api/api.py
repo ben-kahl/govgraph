@@ -21,6 +21,7 @@ from models import (
 )
 from database import close_drivers, get_neo4j_driver, get_pg_connection
 from auth import get_current_user
+from rate_limit import limiter
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -32,6 +33,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
 from neo4j.graph import Node, Path, Relationship
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,6 +64,9 @@ app = FastAPI(
     redoc_url="/redoc" if _debug else None,
     openapi_url="/openapi.json" if _debug else None,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.exception_handler(Exception)
@@ -259,7 +265,9 @@ _CONTRACT_JOIN = """
 """
 
 @app.get("/vendors", response_model=PaginatedResponse)
+@limiter.limit("60/minute")
 async def get_vendors(
+    request: Request,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -314,7 +322,9 @@ async def get_vendors(
 
 
 @app.get("/vendors/{id}", response_model=Vendor)
+@limiter.limit("60/minute")
 async def get_vendor_by_id(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -331,7 +341,9 @@ async def get_vendor_by_id(
 
 
 @app.get("/vendors/{id}/stats", response_model=VendorStats)
+@limiter.limit("60/minute")
 async def get_vendor_stats(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -391,7 +403,9 @@ async def get_vendor_stats(
 # ---------------------------------------------------------------------------
 
 @app.get("/agencies", response_model=PaginatedResponse)
+@limiter.limit("60/minute")
 async def get_agencies(
+    request: Request,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -426,7 +440,9 @@ async def get_agencies(
 
 
 @app.get("/agencies/{id}", response_model=Agency)
+@limiter.limit("60/minute")
 async def get_agency_by_id(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -443,7 +459,9 @@ async def get_agency_by_id(
 
 
 @app.get("/agencies/{id}/stats", response_model=AgencyStats)
+@limiter.limit("60/minute")
 async def get_agency_stats(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -503,7 +521,9 @@ async def get_agency_stats(
 # ---------------------------------------------------------------------------
 
 @app.get("/contracts", response_model=PaginatedResponse)
+@limiter.limit("60/minute")
 async def get_contracts(
+    request: Request,
     vendor_id: Optional[UUID] = None,
     agency_id: Optional[UUID] = None,
     min_amount: Optional[float] = None,
@@ -548,7 +568,9 @@ async def get_contracts(
 
 
 @app.get("/contracts/{id}", response_model=Contract)
+@limiter.limit("60/minute")
 async def get_contract_by_id(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -570,7 +592,9 @@ async def get_contract_by_id(
 # ---------------------------------------------------------------------------
 
 @app.get("/graph/vendor/{id}", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_vendor_graph(
+    request: Request,
     id: UUID,
     limit: int = Query(500, ge=10, le=5000),
     current_user: dict = Depends(get_current_user),
@@ -608,7 +632,9 @@ async def get_vendor_graph(
 
 
 @app.get("/graph/agency/{id}", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_agency_graph(
+    request: Request,
     id: UUID,
     limit: int = Query(1000, ge=10, le=5000),
     current_user: dict = Depends(get_current_user),
@@ -633,7 +659,9 @@ async def get_agency_graph(
 
 
 @app.get("/graph/contract/{id}", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_contract_graph(
+    request: Request,
     id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -659,7 +687,9 @@ async def get_contract_graph(
 
 
 @app.get("/graph/overview", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_overview_graph(
+    request: Request,
     limit: int = Query(30, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
@@ -686,7 +716,9 @@ async def get_overview_graph(
 
 
 @app.get("/graph/explore", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_explore_graph(
+    request: Request,
     agency_limit: int = Query(8, ge=1, le=20),
     min_amount: float = Query(5_000_000, ge=0),
     contract_limit: int = Query(150, ge=1, le=500),
@@ -723,7 +755,9 @@ async def get_explore_graph(
 
 
 @app.get("/graph/vendor/{id}/supply-chain", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_vendor_supply_chain(
+    request: Request,
     id: UUID,
     depth: int = Query(3, ge=1, le=5),
     current_user: dict = Depends(get_current_user),
@@ -746,7 +780,9 @@ async def get_vendor_supply_chain(
 
 
 @app.get("/graph/vendor/{id}/peers", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_vendor_peers(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -769,7 +805,9 @@ async def get_vendor_peers(
 
 
 @app.get("/graph/path", response_model=GraphResponse)
+@limiter.limit("20/minute")
 async def get_graph_path(
+    request: Request,
     from_id: UUID = Query(..., alias="from"),
     to_id: UUID = Query(..., alias="to"),
     current_user: dict = Depends(get_current_user),
@@ -789,7 +827,9 @@ async def get_graph_path(
 
 
 @app.get("/graph/hubs", response_model=List[HubVendor])
+@limiter.limit("20/minute")
 async def get_hub_vendors(
+    request: Request,
     min_sub_count: int = Query(5, ge=1),
     current_user: dict = Depends(get_current_user),
 ):
@@ -835,7 +875,9 @@ async def get_hub_vendors(
 # ---------------------------------------------------------------------------
 
 @app.get("/insights/summary")
+@limiter.limit("30/minute")
 async def get_summary_stats(
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_pg_connection()
@@ -862,7 +904,9 @@ async def get_summary_stats(
 
 
 @app.get("/insights/market-share", response_model=List[MarketShareEntry])
+@limiter.limit("30/minute")
 async def get_market_share(
+    request: Request,
     limit: int = Query(25, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
@@ -891,7 +935,9 @@ async def get_market_share(
 
 
 @app.get("/insights/agency-market-share")
+@limiter.limit("30/minute")
 async def get_agency_market_share(
+    request: Request,
     limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
@@ -932,7 +978,9 @@ async def get_agency_market_share(
 
 
 @app.get("/insights/agency/{id}/spending-over-time", response_model=List[SpendingTimeSeries])
+@limiter.limit("30/minute")
 async def get_agency_spending_over_time(
+    request: Request,
     id: UUID,
     period: str = Query("month", pattern="^(month|quarter|year)$"),
     current_user: dict = Depends(get_current_user),
@@ -959,7 +1007,9 @@ async def get_agency_spending_over_time(
 
 
 @app.get("/insights/vendor/{id}/award-types", response_model=List[AwardTypeBreakdown])
+@limiter.limit("30/minute")
 async def get_vendor_award_types(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -985,7 +1035,9 @@ async def get_vendor_award_types(
 
 
 @app.get("/insights/agency/{id}/vendor-concentration", response_model=List[ConcentrationMetric])
+@limiter.limit("30/minute")
 async def get_agency_vendor_concentration(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -1020,7 +1072,9 @@ async def get_agency_vendor_concentration(
 
 
 @app.get("/insights/vendor/{id}/velocity", response_model=List[VelocityEntry])
+@limiter.limit("30/minute")
 async def get_vendor_velocity(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -1047,7 +1101,9 @@ async def get_vendor_velocity(
 
 
 @app.get("/insights/vendor/{id}/subcontract-flow", response_model=List[SubcontractFlow])
+@limiter.limit("30/minute")
 async def get_vendor_subcontract_flow(
+    request: Request,
     id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -1079,7 +1135,9 @@ async def get_vendor_subcontract_flow(
 
 
 @app.get("/insights/resolution-quality", response_model=List[ResolutionQualityEntry])
+@limiter.limit("30/minute")
 async def get_resolution_quality(
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_pg_connection()
@@ -1103,7 +1161,9 @@ async def get_resolution_quality(
 
 
 @app.get("/insights/risk/award-spikes", response_model=List[AnomalyEntry])
+@limiter.limit("30/minute")
 async def get_award_spikes(
+    request: Request,
     z_threshold: float = Query(3.0, ge=1.0),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1144,7 +1204,9 @@ async def get_award_spikes(
 
 
 @app.get("/insights/risk/new-entrants", response_model=List[NewEntrant])
+@limiter.limit("30/minute")
 async def get_new_entrants(
+    request: Request,
     days: int = Query(90, ge=1, le=365),
     min_value: float = Query(500000.0, ge=0),
     current_user: dict = Depends(get_current_user),
@@ -1179,7 +1241,9 @@ async def get_new_entrants(
 # ---------------------------------------------------------------------------
 
 @app.get("/insights/risk/sole-source", response_model=List[SoleSourceFlag])
+@limiter.limit("20/minute")
 async def get_sole_source(
+    request: Request,
     award_type: str = Query("A", pattern=r"^[A-Z]{1,2}$"),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1204,7 +1268,9 @@ async def get_sole_source(
 
 
 @app.get("/insights/risk/circular-subcontracts", response_model=List[CircularChain])
+@limiter.limit("20/minute")
 async def get_circular_subcontracts(
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     driver = _require_neo4j()
