@@ -9,6 +9,16 @@ module "api_gateway" {
   create_domain_name = false
   create_certificate = false
 
+  # CORS is owned here so that error responses (e.g. Lambda crashes) always
+  # carry the correct headers.  FastAPI's CORSMiddleware is kept as a
+  # defence-in-depth fallback; API Gateway overrides any duplicate headers.
+  cors_configuration = {
+    allow_headers = ["content-type", "authorization"]
+    allow_methods = ["GET", "POST", "OPTIONS"]
+    allow_origins = split(",", var.allowed_origins)
+    max_age       = 300
+  }
+
   stage_default_route_settings = {
     throttling_rate_limit  = 100
     throttling_burst_limit = 200
