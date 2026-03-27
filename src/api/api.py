@@ -1279,7 +1279,7 @@ async def get_circular_subcontracts(
             """
             MATCH cycle = (v:Vendor)-[:SUBCONTRACTED*2..4]->(v)
             RETURN
-                [n IN nodes(cycle) | n.canonicalName] AS loop_members,
+                [n IN nodes(cycle) | {id: n.id, name: n.canonicalName}] AS loop_members,
                 length(cycle) AS loop_length
             LIMIT 20
             """

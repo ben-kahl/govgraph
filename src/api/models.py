@@ -179,6 +179,11 @@ class SoleSourceFlag(BaseModel):
     total_spend: float
 
 
+class CircularChainMember(BaseModel):
+    id: str
+    name: str
+
+
 class CircularChain(BaseModel):
-    loop_members: List[str]
+    loop_members: List[CircularChainMember]
     loop_length: int
