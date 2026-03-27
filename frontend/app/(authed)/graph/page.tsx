@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { GraphNode, GraphEdge, GraphResponse } from '@/types/api';
 
-type Mode = 'vendor' | 'agency' | 'overview' | 'explore';
+type Mode = 'vendor' | 'agency' | 'overview' | 'explore' | 'path';
 type EntityMode = 'vendor' | 'agency';
 
 interface SelectedEntity {
@@ -92,6 +92,14 @@ export default function GraphPage() {
   const [contractLimit, setContractLimit] = useState(500);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // Path mode state
+  const [pathFrom, setPathFrom] = useState<SelectedEntity | null>(null);
+  const [pathTo, setPathTo] = useState<SelectedEntity | null>(null);
+  const [pathSearchText, setPathSearchText] = useState('');
+  const [pathDebouncedSearch, setPathDebouncedSearch] = useState('');
+  const [pathShowDropdown, setPathShowDropdown] = useState(false);
+  const [pathTarget, setPathTarget] = useState<'from' | 'to'>('from');
+  const [pathActive, setPathActive] = useState(false);
   const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
   const [expansionRootId, setExpansionRootId] = useState<string | null>(null);
 
@@ -99,6 +107,11 @@ export default function GraphPage() {
     const t = setTimeout(() => setDebouncedSearch(searchText), 300);
     return () => clearTimeout(t);
   }, [searchText]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setPathDebouncedSearch(pathSearchText), 300);
+    return () => clearTimeout(t);
+  }, [pathSearchText]);
 
   const { data: suggestions } = useQuery({
     queryKey: ['graph-search', mode, debouncedSearch],
@@ -116,11 +129,28 @@ export default function GraphPage() {
     enabled: (mode === 'vendor' || mode === 'agency') && debouncedSearch.length >= 2,
   });
 
-  const graphEnabled = overviewActive || exploreActive || selectedEntities.length > 0;
+  const { data: pathSuggestions } = useQuery({
+    queryKey: ['path-search', pathDebouncedSearch],
+    queryFn: async () => {
+      const [vendors, agencies] = await Promise.all([
+        api.vendors.list(pathDebouncedSearch, 1, 5),
+        api.agencies.list(pathDebouncedSearch, 1, 5),
+      ]);
+      return [
+        ...vendors.items.map((v) => ({ id: v.id, name: v.canonical_name, type: 'vendor' as EntityMode })),
+        ...agencies.items.map((a) => ({ id: a.id, name: a.agency_name, type: 'agency' as EntityMode })),
+      ];
+    },
+    enabled: mode === 'path' && pathDebouncedSearch.length >= 2,
+  });
+
+  const graphEnabled = overviewActive || exploreActive || selectedEntities.length > 0 || pathActive;
   const queryKey = overviewActive
     ? ['graph', 'overview']
     : exploreActive
     ? ['graph', 'explore']
+    : pathActive && pathFrom && pathTo
+    ? ['graph', 'path', pathFrom.id, pathTo.id]
     : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(','), contractLimit];
 
   const { data: graphData, isLoading, isError } = useQuery({
@@ -128,6 +158,7 @@ export default function GraphPage() {
     queryFn: async () => {
       if (overviewActive) return api.graph.overview();
       if (exploreActive) return api.graph.explore();
+      if (pathActive && pathFrom && pathTo) return api.graph.path(pathFrom.id, pathTo.id);
       const results = await Promise.all(
         selectedEntities.map((e) =>
           e.type === 'vendor'
@@ -175,10 +206,11 @@ export default function GraphPage() {
     };
   }, [allGraphData, dateFrom, dateTo]);
 
-  const highlightedIds = useMemo(
-    () => (overviewActive || exploreActive ? [] : selectedEntities.map((e) => e.id)),
-    [overviewActive, exploreActive, selectedEntities]
-  );
+  const highlightedIds = useMemo(() => {
+    if (overviewActive || exploreActive) return [];
+    if (pathActive && pathFrom && pathTo) return [pathFrom.id, pathTo.id];
+    return selectedEntities.map((e) => e.id);
+  }, [overviewActive, exploreActive, pathActive, pathFrom, pathTo, selectedEntities]);
 
   const layoutOptions = useMemo<LayoutOptions | undefined>(() => {
     if (layoutName === 'fcose' || layoutName === 'cose' || layoutName === 'cola') {
@@ -226,6 +258,7 @@ export default function GraphPage() {
     setSelectedEdge(null);
     if (newMode !== 'overview') setOverviewActive(false);
     if (newMode !== 'explore') setExploreActive(false);
+    if (newMode !== 'path') { setPathActive(false); setPathFrom(null); setPathTo(null); setPathSearchText(''); }
   }
 
   function loadOverview() {
@@ -316,6 +349,9 @@ export default function GraphPage() {
           <Button variant={mode === 'explore' ? 'default' : 'outline'} size="sm" onClick={() => switchMode('explore')}>
             Explore
           </Button>
+          <Button variant={mode === 'path' ? 'default' : 'outline'} size="sm" onClick={() => switchMode('path')}>
+            Path
+          </Button>
         </div>
 
         {/* Search / action panel */}
@@ -368,6 +404,116 @@ export default function GraphPage() {
               and the highest-value contracts ($5M+) they awarded along with the
               winning vendors. Good for discovering patterns across the dataset.
             </p>
+          </div>
+        )}
+
+        {mode === 'path' && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Find the shortest relationship path between any two vendors or agencies in the graph.
+            </p>
+
+            {/* From entity */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">From</label>
+              {pathFrom ? (
+                <div className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: pathFrom.type === 'vendor' ? '#ef4444' : '#22c55e' }}
+                  />
+                  <span className="flex-1 truncate">{pathFrom.name}</span>
+                  <button
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => { setPathFrom(null); setPathActive(false); }}
+                  >×</button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start text-muted-foreground font-normal"
+                  onClick={() => { setPathTarget('from'); setPathSearchText(''); setPathShowDropdown(true); }}
+                >
+                  Select starting entity…
+                </Button>
+              )}
+            </div>
+
+            {/* To entity */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">To</label>
+              {pathTo ? (
+                <div className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: pathTo.type === 'vendor' ? '#ef4444' : '#22c55e' }}
+                  />
+                  <span className="flex-1 truncate">{pathTo.name}</span>
+                  <button
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => { setPathTo(null); setPathActive(false); }}
+                  >×</button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start text-muted-foreground font-normal"
+                  onClick={() => { setPathTarget('to'); setPathSearchText(''); setPathShowDropdown(true); }}
+                >
+                  Select ending entity…
+                </Button>
+              )}
+            </div>
+
+            {/* Search dropdown */}
+            {pathShowDropdown && (
+              <div className="space-y-1 relative">
+                <Input
+                  autoFocus
+                  placeholder="Search vendors or agencies…"
+                  value={pathSearchText}
+                  onChange={(e) => { setPathSearchText(e.target.value); }}
+                  onBlur={() => setTimeout(() => setPathShowDropdown(false), 150)}
+                />
+                {pathSuggestions && pathSuggestions.length > 0 && (
+                  <ul className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                    {pathSuggestions.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          if (pathTarget === 'from') setPathFrom(item);
+                          else setPathTo(item);
+                          setPathShowDropdown(false);
+                          setPathSearchText('');
+                        }}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: item.type === 'vendor' ? '#ef4444' : '#22c55e' }}
+                        />
+                        {item.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              disabled={!pathFrom || !pathTo}
+              onClick={() => { setPathActive(true); setExpansions(new Map()); setSelectedNode(null); setSelectedEdge(null); }}
+            >
+              Find Path
+            </Button>
+
+            {pathActive && graphData && graphData.nodes.length === 0 && (
+              <p className="text-xs text-muted-foreground">No path found between these entities.</p>
+            )}
           </div>
         )}
 
