@@ -122,6 +122,16 @@ export interface ConcentrationMetric {
   hhi: number;
 }
 
+export interface CircularChainMember {
+  id: string;
+  name: string;
+}
+
+export interface CircularChain {
+  loop_members: CircularChainMember[];
+  loop_length: number;
+}
+
 export interface GraphNodeData {
   id: string;
   label: string;

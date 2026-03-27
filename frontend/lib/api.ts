@@ -18,6 +18,7 @@ import type {
   AgencyStats,
   VendorStats,
   ConcentrationMetric,
+  CircularChain,
 } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -81,6 +82,7 @@ export const api = {
     newEntrants: (days = 90) =>
       apiFetch<NewEntrant[]>(`/insights/risk/new-entrants?days=${days}`),
     soleSource: () => apiFetch<SoleSourceFlag[]>('/insights/risk/sole-source'),
+    circularSubcontracts: () => apiFetch<CircularChain[]>('/insights/risk/circular-subcontracts'),
   },
   graph: {
     vendor: (id: string, limit = 500) =>

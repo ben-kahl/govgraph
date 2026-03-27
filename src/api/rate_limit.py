@@ -52,4 +52,28 @@ def get_user_identifier(request: Request) -> str:
     return get_remote_address(request)
 
 
-limiter = Limiter(key_func=get_user_identifier, storage_uri=_REDIS_URL)
+def _build_limiter() -> Limiter:
+    """Instantiate the SlowAPI limiter, falling back to memory:// on Redis errors.
+
+    Returns:
+        A configured :class:`Limiter` instance using Redis when available,
+        otherwise an in-memory limiter so that a Redis outage never takes the
+        API down (fail-open).
+    """
+    if _REDIS_URL == "memory://":
+        return Limiter(key_func=get_user_identifier, storage_uri="memory://")
+    try:
+        instance = Limiter(key_func=get_user_identifier, storage_uri=_REDIS_URL)
+        # Probe the connection so a bad URL is caught here, not per-request.
+        instance._storage.check()
+        logger.info("rate_limit: Redis backend initialised (%s)", _REDIS_URL.split("@")[-1])
+        return instance
+    except Exception as exc:
+        logger.error(
+            "rate_limit: Redis unavailable (%s) — falling back to memory://",
+            exc,
+        )
+        return Limiter(key_func=get_user_identifier, storage_uri="memory://")
+
+
+limiter = _build_limiter()

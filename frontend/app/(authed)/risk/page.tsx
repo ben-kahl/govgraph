@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -49,6 +50,7 @@ export default function RiskPage() {
   const [spikesPage, setSpikesPage] = useState(0);
   const [entrantsPage, setEntrantsPage] = useState(0);
   const [ssPage, setSsPage] = useState(0);
+  const [circularPage, setCircularPage] = useState(0);
 
   const { data: spikes, isLoading: spikesLoading } = useQuery({
     queryKey: ['awardSpikes'],
@@ -65,9 +67,15 @@ export default function RiskPage() {
     queryFn: () => api.analytics.soleSource(),
   });
 
+  const { data: circular, isLoading: circularLoading } = useQuery({
+    queryKey: ['circularSubcontracts'],
+    queryFn: () => api.analytics.circularSubcontracts(),
+  });
+
   const spikesSlice = spikes?.slice(spikesPage * PAGE_SIZE, (spikesPage + 1) * PAGE_SIZE) ?? [];
   const entrantsSlice = entrants?.slice(entrantsPage * PAGE_SIZE, (entrantsPage + 1) * PAGE_SIZE) ?? [];
   const ssSlice = soleSource?.slice(ssPage * PAGE_SIZE, (ssPage + 1) * PAGE_SIZE) ?? [];
+  const circularSlice = circular?.slice(circularPage * PAGE_SIZE, (circularPage + 1) * PAGE_SIZE) ?? [];
 
   return (
     <div className="space-y-6">
@@ -210,6 +218,52 @@ export default function RiskPage() {
                 total={soleSource.length}
                 onPrev={() => setSsPage((p) => p - 1)}
                 onNext={() => setSsPage((p) => p + 1)}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Circular Subcontracting Chains</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {circularLoading && <p className="text-muted-foreground">Loading…</p>}
+          {circular && circular.length === 0 && <p className="text-muted-foreground">No circular chains detected.</p>}
+          {circular && circular.length > 0 && (
+            <>
+              <div className="space-y-3">
+                {circularSlice.map((chain, i) => (
+                  <div key={i} className="rounded-md border p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="text-xs">
+                        Loop · {chain.loop_length} hop{chain.loop_length !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1 text-sm">
+                      {chain.loop_members.map((member, j) => (
+                        <span key={j} className="flex items-center gap-1">
+                          <Link
+                            href={`/vendors/detail?id=${member.id}`}
+                            className="text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+                          >
+                            {member.name}
+                          </Link>
+                          {j < chain.loop_members.length - 1 && (
+                            <span className="text-muted-foreground">→</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <PaginationControls
+                page={circularPage}
+                total={circular.length}
+                onPrev={() => setCircularPage((p) => p - 1)}
+                onNext={() => setCircularPage((p) => p + 1)}
               />
             </>
           )}
