@@ -203,8 +203,15 @@ def sync_contracts(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) 
                 MATCH (a:Agency {id: $a_id})
                 MERGE (a)-[:AWARDED_CONTRACT]->(c)
                 """
-                neo4j_session.run(query_rel_agency, c_id=str(
+                result = neo4j_session.run(query_rel_agency, c_id=str(
                     contract['id']), a_id=str(awarding_agency_id))
+                summary = result.consume()
+                if summary.counters.relationships_created == 0 and summary.counters.nodes_created == 0:
+                    logger.warning(
+                        f"SYNC: Agency {awarding_agency_id} not found in Neo4j — "
+                        f"AWARDED_CONTRACT not created for contract {contract['contract_id']}. "
+                        f"Agency may not have been synced."
+                    )
 
             # 2. Link to Funding Agency (Prefer Sub Agency if available)
             funding_agency_id = contract['funding_sub_agency_id'] or contract['funding_agency_id']
@@ -214,8 +221,15 @@ def sync_contracts(pg_conn: psycopg2.extensions.connection, neo4j_session: Any) 
                 MATCH (a:Agency {id: $a_id})
                 MERGE (a)-[:FUNDED]->(c)
                 """
-                neo4j_session.run(query_rel_fund, c_id=str(
+                result = neo4j_session.run(query_rel_fund, c_id=str(
                     contract['id']), a_id=str(funding_agency_id))
+                summary = result.consume()
+                if summary.counters.relationships_created == 0 and summary.counters.nodes_created == 0:
+                    logger.warning(
+                        f"SYNC: Agency {funding_agency_id} not found in Neo4j — "
+                        f"FUNDED not created for contract {contract['contract_id']}. "
+                        f"Agency may not have been synced."
+                    )
 
             mark_synced(pg_conn, 'contract', contract['id'])
     logger.info(f"SYNC: Successfully synced {len(contracts)} contracts.")
