@@ -371,18 +371,40 @@ def update_cache(vendor_name: str, canonical_name: str, vendor_id: str, confiden
         logger.warning(f"Failed to update DynamoDB cache: {e}")
 
 
+def _extract_canonical_name(raw: str, fallback: str) -> str:
+    """Extract just the company name from a Bedrock response.
+
+    Guards against the model returning a full sentence like
+    'The canonical form of "X" is: Acme Corporation' instead of
+    just 'Acme Corporation'.
+    """
+    text = raw.strip()
+    # If the response contains 'is:' or 'is:\n', take everything after it
+    for marker in ("is:\n\n", "is:\n", "is: "):
+        if marker in text:
+            candidate = text.split(marker, 1)[1].strip().strip('"')
+            if candidate:
+                return candidate
+    # If there are multiple lines, the last non-empty line is usually the name
+    lines = [l.strip().strip('"') for l in text.splitlines() if l.strip()]
+    if len(lines) > 1:
+        return lines[-1]
+    return text.strip('"') or fallback
+
+
 def call_bedrock_standardization_with_retry(messy_name: str, max_retries: int = 3) -> str:
     """Calls Bedrock with exponential backoff to handle throttling."""
-    prompt = f"""
-    Standardize this company name to its canonical legal form.
-    Input: "{messy_name}"
-    Rules: Return ONLY the name. Expand abbreviations (Corp -> Corporation).
-    Name:"""
+    prompt = f'Standardize this vendor name to its canonical legal form. Expand abbreviations (Corp -> Corporation, Univ -> University). Return ONLY the standardized name with no explanation.\n\nVendor name: "{messy_name}"'
 
     body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 100,
-        "messages": [{"role": "user", "content": prompt}]
+        "messages": [
+            {"role": "user", "content": prompt},
+            # Assistant prefill forces the model to output the name directly
+            # rather than a full sentence like "The canonical form is: ..."
+            {"role": "assistant", "content": ""},
+        ],
     })
 
     for attempt in range(max_retries):
@@ -390,7 +412,8 @@ def call_bedrock_standardization_with_retry(messy_name: str, max_retries: int = 
             response = get_bedrock_client().invoke_model(
                 body=body, modelId=BEDROCK_MODEL_ID)
             response_body = json.loads(response.get("body").read())
-            return response_body["content"][0]["text"].strip()
+            raw = response_body["content"][0]["text"].strip()
+            return _extract_canonical_name(raw, messy_name)
         except Exception as e:
             if "ThrottlingException" in str(e) or "Too many requests" in str(e):
                 # More aggressive backoff for Bedrock
