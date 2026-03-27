@@ -83,11 +83,11 @@ resource "aws_cognito_user_pool_client" "frontend" {
   )
 
   callback_urls = [
-    "${var.allowed_origins}/login",
+    "${trimsuffix(var.app_url, "/")}/login",
     "http://localhost:3000/login",
   ]
   logout_urls = [
-    var.allowed_origins,
+    trimsuffix(var.app_url, "/"),
     "http://localhost:3000",
   ]
 
