@@ -10,8 +10,8 @@ Amplify.configure({
         oauth: {
           domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN!,
           scopes: ['openid', 'email', 'profile'],
-          redirectSignIn: [`${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/login`],
-          redirectSignOut: [process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'],
+          redirectSignIn: [`${(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/login`],
+          redirectSignOut: [(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')],
           responseType: 'code',
         },
       },

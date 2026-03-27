@@ -95,10 +95,10 @@ export default function GraphPage() {
   // Path mode state
   const [pathFrom, setPathFrom] = useState<SelectedEntity | null>(null);
   const [pathTo, setPathTo] = useState<SelectedEntity | null>(null);
-  const [pathSearchText, setPathSearchText] = useState('');
-  const [pathDebouncedSearch, setPathDebouncedSearch] = useState('');
-  const [pathShowDropdown, setPathShowDropdown] = useState(false);
-  const [pathTarget, setPathTarget] = useState<'from' | 'to'>('from');
+  const [pathFromSearch, setPathFromSearch] = useState('');
+  const [pathFromDebounced, setPathFromDebounced] = useState('');
+  const [pathToSearch, setPathToSearch] = useState('');
+  const [pathToDebounced, setPathToDebounced] = useState('');
   const [pathActive, setPathActive] = useState(false);
   const [expansions, setExpansions] = useState<Map<string, GraphResponse>>(() => new Map());
   const [expansionRootId, setExpansionRootId] = useState<string | null>(null);
@@ -109,9 +109,14 @@ export default function GraphPage() {
   }, [searchText]);
 
   useEffect(() => {
-    const t = setTimeout(() => setPathDebouncedSearch(pathSearchText), 300);
+    const t = setTimeout(() => setPathFromDebounced(pathFromSearch), 300);
     return () => clearTimeout(t);
-  }, [pathSearchText]);
+  }, [pathFromSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setPathToDebounced(pathToSearch), 300);
+    return () => clearTimeout(t);
+  }, [pathToSearch]);
 
   const { data: suggestions } = useQuery({
     queryKey: ['graph-search', mode, debouncedSearch],
@@ -129,19 +134,34 @@ export default function GraphPage() {
     enabled: (mode === 'vendor' || mode === 'agency') && debouncedSearch.length >= 2,
   });
 
-  const { data: pathSuggestions } = useQuery({
-    queryKey: ['path-search', pathDebouncedSearch],
+  const { data: pathFromSuggestions } = useQuery({
+    queryKey: ['path-from-search', pathFromDebounced],
     queryFn: async () => {
       const [vendors, agencies] = await Promise.all([
-        api.vendors.list(pathDebouncedSearch, 1, 5),
-        api.agencies.list(pathDebouncedSearch, 1, 5),
+        api.vendors.list(pathFromDebounced, 1, 5),
+        api.agencies.list(pathFromDebounced, 1, 5),
       ]);
       return [
         ...vendors.items.map((v) => ({ id: v.id, name: v.canonical_name, type: 'vendor' as EntityMode })),
         ...agencies.items.map((a) => ({ id: a.id, name: a.agency_name, type: 'agency' as EntityMode })),
       ];
     },
-    enabled: mode === 'path' && pathDebouncedSearch.length >= 2,
+    enabled: mode === 'path' && pathFromDebounced.length >= 2,
+  });
+
+  const { data: pathToSuggestions } = useQuery({
+    queryKey: ['path-to-search', pathToDebounced],
+    queryFn: async () => {
+      const [vendors, agencies] = await Promise.all([
+        api.vendors.list(pathToDebounced, 1, 5),
+        api.agencies.list(pathToDebounced, 1, 5),
+      ]);
+      return [
+        ...vendors.items.map((v) => ({ id: v.id, name: v.canonical_name, type: 'vendor' as EntityMode })),
+        ...agencies.items.map((a) => ({ id: a.id, name: a.agency_name, type: 'agency' as EntityMode })),
+      ];
+    },
+    enabled: mode === 'path' && pathToDebounced.length >= 2,
   });
 
   const graphEnabled = overviewActive || exploreActive || selectedEntities.length > 0 || pathActive;
@@ -150,7 +170,7 @@ export default function GraphPage() {
     : exploreActive
     ? ['graph', 'explore']
     : pathActive && pathFrom && pathTo
-    ? ['graph', 'path', pathFrom.id, pathTo.id]
+    ? ['graph', 'path', pathFrom.id, pathTo.id, pathFrom.type, pathTo.type]
     : ['graph', 'entities', selectedEntities.map((e) => `${e.type}:${e.id}`).join(','), contractLimit];
 
   const { data: graphData, isLoading, isError } = useQuery({
@@ -158,7 +178,7 @@ export default function GraphPage() {
     queryFn: async () => {
       if (overviewActive) return api.graph.overview();
       if (exploreActive) return api.graph.explore();
-      if (pathActive && pathFrom && pathTo) return api.graph.path(pathFrom.id, pathTo.id);
+      if (pathActive && pathFrom && pathTo) return api.graph.path(pathFrom.id, pathTo.id, pathFrom.type, pathTo.type);
       const results = await Promise.all(
         selectedEntities.map((e) =>
           e.type === 'vendor'
@@ -258,7 +278,7 @@ export default function GraphPage() {
     setSelectedEdge(null);
     if (newMode !== 'overview') setOverviewActive(false);
     if (newMode !== 'explore') setExploreActive(false);
-    if (newMode !== 'path') { setPathActive(false); setPathFrom(null); setPathTo(null); setPathSearchText(''); }
+    if (newMode !== 'path') { setPathActive(false); setPathFrom(null); setPathTo(null); setPathFromSearch(''); setPathToSearch(''); }
   }
 
   function loadOverview() {
@@ -429,14 +449,31 @@ export default function GraphPage() {
                   >×</button>
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start text-muted-foreground font-normal"
-                  onClick={() => { setPathTarget('from'); setPathSearchText(''); setPathShowDropdown(true); }}
-                >
-                  Select starting entity…
-                </Button>
+                <div className="relative">
+                  <Input
+                    placeholder="Search vendors or agencies…"
+                    value={pathFromSearch}
+                    onChange={(e) => setPathFromSearch(e.target.value)}
+                  />
+                  {pathFromSuggestions && pathFromSuggestions.length > 0 && pathFromSearch.length >= 2 && (
+                    <ul className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {pathFromSuggestions.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setPathFrom(item); setPathFromSearch(''); }}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: item.type === 'vendor' ? '#ef4444' : '#22c55e' }}
+                          />
+                          {item.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
 
@@ -456,52 +493,33 @@ export default function GraphPage() {
                   >×</button>
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start text-muted-foreground font-normal"
-                  onClick={() => { setPathTarget('to'); setPathSearchText(''); setPathShowDropdown(true); }}
-                >
-                  Select ending entity…
-                </Button>
+                <div className="relative">
+                  <Input
+                    placeholder="Search vendors or agencies…"
+                    value={pathToSearch}
+                    onChange={(e) => setPathToSearch(e.target.value)}
+                  />
+                  {pathToSuggestions && pathToSuggestions.length > 0 && pathToSearch.length >= 2 && (
+                    <ul className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {pathToSuggestions.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setPathTo(item); setPathToSearch(''); }}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: item.type === 'vendor' ? '#ef4444' : '#22c55e' }}
+                          />
+                          {item.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
-
-            {/* Search dropdown */}
-            {pathShowDropdown && (
-              <div className="space-y-1 relative">
-                <Input
-                  autoFocus
-                  placeholder="Search vendors or agencies…"
-                  value={pathSearchText}
-                  onChange={(e) => { setPathSearchText(e.target.value); }}
-                  onBlur={() => setTimeout(() => setPathShowDropdown(false), 150)}
-                />
-                {pathSuggestions && pathSuggestions.length > 0 && (
-                  <ul className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                    {pathSuggestions.map((item) => (
-                      <li
-                        key={item.id}
-                        className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          if (pathTarget === 'from') setPathFrom(item);
-                          else setPathTo(item);
-                          setPathShowDropdown(false);
-                          setPathSearchText('');
-                        }}
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: item.type === 'vendor' ? '#ef4444' : '#22c55e' }}
-                        />
-                        {item.name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
 
             <Button
               className="w-full"
