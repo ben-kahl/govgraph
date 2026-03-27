@@ -665,13 +665,10 @@ async def get_contract_graph(
     id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Return a contract node with its full relationship neighbourhood.
+    """Return a contract node with its directly connected vendors and agencies.
 
-    Matches by ``id`` property first, then falls back to elementId.  Beyond
-    the contract's direct neighbours (vendor + agencies), also returns up to
-    ten of the vendor's other contracts and five of each agency's other
-    contracts so that expanding a contract node reveals as much context as
-    expanding a vendor or agency node.
+    Matches by ``id`` property first, then falls back to elementId so that
+    contracts without an explicit UUID property are still retrievable.
     """
     driver = _require_neo4j()
     with driver.session() as session:
@@ -679,33 +676,10 @@ async def get_contract_graph(
             """
             MATCH (c:Contract)
             WHERE c.id = $id OR elementId(c) = $id
-
-            // Direct neighbours
             OPTIONAL MATCH (v:Vendor)-[ra:AWARDED]->(c)
             OPTIONAL MATCH (aw_a:Agency)-[rac:AWARDED_CONTRACT]->(c)
             OPTIONAL MATCH (fu_a:Agency)-[rf:FUNDED]->(c)
-
-            // Vendor's other contracts (top 10 by value)
-            OPTIONAL MATCH (v)-[ra2:AWARDED]->(vc:Contract)
-            WHERE vc <> c
-            WITH c, v, ra, aw_a, rac, fu_a, rf, vc, ra2
-            ORDER BY vc.obligatedAmount DESC
-            WITH c, v, ra, aw_a, rac, fu_a, rf,
-                 COLLECT(DISTINCT vc)[..10]  AS vendor_contracts,
-                 COLLECT(DISTINCT ra2)[..10] AS vendor_rels
-
-            // Awarding agency's other contracts (top 5 by value)
-            OPTIONAL MATCH (aw_a)-[rac2:AWARDED_CONTRACT]->(ac:Contract)
-            WHERE ac <> c
-            WITH c, v, ra, aw_a, rac, fu_a, rf, vendor_contracts, vendor_rels, ac, rac2
-            ORDER BY ac.obligatedAmount DESC
-            WITH c, v, ra, aw_a, rac, fu_a, rf, vendor_contracts, vendor_rels,
-                 COLLECT(DISTINCT ac)[..5]   AS agency_contracts,
-                 COLLECT(DISTINCT rac2)[..5] AS agency_rels
-
-            RETURN c, v, ra, aw_a, rac, fu_a, rf,
-                   vendor_contracts, vendor_rels,
-                   agency_contracts, agency_rels
+            RETURN c, v, ra, aw_a, rac, fu_a, rf
             """,
             id=id,
         )
