@@ -3,7 +3,7 @@
 GovGraph is an Open-Source Intelligence (OSINT) supply chain platform designed for federal procurement analysis. The system aggregates contract data from USAspending.gov, leverages Large Language Models (Amazon Bedrock) for entity resolution, and constructs a knowledge graph (Neo4j) to map complex relationships between government agencies, prime contractors, and subcontractors.
 
 ### Check it out here:
-[Live Demo](govgraph.xyz)
+[Live Demo](https://govgraph.xyz)
 
 ## Key Features
 
