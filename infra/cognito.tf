@@ -82,14 +82,20 @@ resource "aws_cognito_user_pool_client" "frontend" {
     local.google_enabled ? ["Google"] : []
   )
 
-  callback_urls = [
-    "${trimsuffix(var.app_url, "/")}/login",
-    "http://localhost:3000/login",
-  ]
-  logout_urls = [
-    trimsuffix(var.app_url, "/"),
-    "http://localhost:3000",
-  ]
+  callback_urls = concat(
+    [
+      "${trimsuffix(var.app_url, "/")}/login",
+      "http://localhost:3000/login",
+    ],
+    [for url in var.additional_app_urls : "${trimsuffix(url, "/")}/login"]
+  )
+  logout_urls = concat(
+    [
+      trimsuffix(var.app_url, "/"),
+      "http://localhost:3000",
+    ],
+    [for url in var.additional_app_urls : trimsuffix(url, "/")]
+  )
 
   access_token_validity  = 60 # minutes
   refresh_token_validity = 7  # days
