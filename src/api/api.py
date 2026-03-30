@@ -810,14 +810,20 @@ async def get_graph_path(
     request: Request,
     from_id: UUID = Query(..., alias="from"),
     to_id: UUID = Query(..., alias="to"),
+    from_type: str = Query("vendor", alias="from_type"),
+    to_type: str = Query("vendor", alias="to_type"),
     current_user: dict = Depends(get_current_user),
 ):
+    """Return the shortest path between any two graph entities (Vendor or Agency)."""
+    label_map = {"vendor": "Vendor", "agency": "Agency"}
+    from_label = label_map.get(from_type.lower(), "Vendor")
+    to_label = label_map.get(to_type.lower(), "Vendor")
     driver = _require_neo4j()
     with driver.session() as session:
         result = session.run(
-            """
-            MATCH (v1:Vendor {id: $from_id}), (v2:Vendor {id: $to_id})
-            MATCH path = shortestPath((v1)-[*..6]-(v2))
+            f"""
+            MATCH (n1:{from_label} {{id: $from_id}}), (n2:{to_label} {{id: $to_id}})
+            MATCH path = shortestPath((n1)-[*..6]-(n2))
             RETURN path
             """,
             from_id=str(from_id),
