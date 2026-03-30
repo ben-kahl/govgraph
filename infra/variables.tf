@@ -93,7 +93,13 @@ variable "google_oauth_client_secret" {
 variable "app_url" {
   description = "Deployed frontend URL (e.g. https://main.xxxx.amplifyapp.com). Set after first terraform apply via terraform output amplify_app_url."
   type        = string
-  default     = "https://main.d2680fpqajv7av.amplifyapp.com"
+  default     = "https://govgraph.xyz"
+}
+
+variable "additional_app_urls" {
+  description = "Extra frontend URLs (custom domains) to add to Cognito callback/logout lists"
+  type        = list(string)
+  default     = ["https://govgraph.xyz", "https://www.govgraph.xyz", "https://main.d2680fpqajv7av.amplifyapp.com"]
 }
 
 variable "github_repo_url" {
@@ -110,7 +116,7 @@ variable "github_access_token" {
 variable "allowed_origins" {
   description = "Comma-separated allowed CORS origins (e.g. http://localhost:3000 or Amplify URL)"
   type        = string
-  default     = "https://main.d2680fpqajv7av.amplifyapp.com"
+  default     = "https://main.d2680fpqajv7av.amplifyapp.com,https://govgraph.xyz,https://www.govgraph.xyz"
 }
 
 variable "redis_url" {
