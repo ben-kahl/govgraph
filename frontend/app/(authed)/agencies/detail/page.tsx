@@ -114,7 +114,7 @@ function AgencyDetail() {
   const spendByYear = (stats?.spending_by_year ?? [])
     .slice()
     .sort((a, b) => a.year - b.year)
-    .map((y) => ({ name: String(y.year), value: y.amount }));
+    .map((y) => ({ name: String(y.year), value: Number(y.amount) }));
 
   return (
     <div className="space-y-6">
@@ -156,7 +156,11 @@ function AgencyDetail() {
               </TabsList>
               <TabsContent value={period}>
                 {sLoading && <p className="text-muted-foreground">Loading…</p>}
-                {spending && <SpendingChart data={spending} />}
+                {spending && (
+                <SpendingChart
+                  data={spending.map((s) => ({ ...s, total_obligated: Number(s.total_obligated) }))}
+                />
+              )}
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -217,7 +221,7 @@ function AgencyDetail() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-right">{v.count.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{formatUSD(v.amount)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{formatUSD(Number(v.amount))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
