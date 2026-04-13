@@ -315,7 +315,11 @@ async def get_vendors(
                     f" LIMIT %s OFFSET %s",
                     (size, offset),
                 )
-            items = cur.fetchall()
+            rows = cur.fetchall()
+            items = [
+                {**row, "total_obligated": float(row["total_obligated"] or 0)}
+                for row in rows
+            ]
             return {"total": total, "page": page, "size": size, "items": items}
     finally:
         conn.close()
