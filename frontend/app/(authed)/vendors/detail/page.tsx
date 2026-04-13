@@ -106,19 +106,19 @@ function VendorDetail() {
   if (!vendor) return <p className="text-destructive">Vendor not found.</p>;
 
   const totalContracts = awardTypes?.reduce((s, t) => s + t.count, 0) ?? 0;
-  const totalObligated = awardTypes?.reduce((s, t) => s + t.total_value, 0) ?? 0;
+  const totalObligated = awardTypes?.reduce((s, t) => s + Number(t.total_value), 0) ?? 0;
   const avgAward = totalContracts > 0 ? totalObligated / totalContracts : 0;
 
   const velocityData = velocity?.map((v) => ({
     period: v.quarter.slice(0, 7),
-    total_obligated: v.total,
+    total_obligated: Number(v.total),
     contract_count: v.awards,
   })) ?? [];
 
   const typeChartData = (awardTypes ?? [])
-    .filter((t) => t.total_value > 0)
-    .sort((a, b) => b.total_value - a.total_value)
-    .map((t) => ({ name: t.award_type ?? 'Unknown', value: t.total_value, count: t.count }));
+    .filter((t) => Number(t.total_value) > 0)
+    .sort((a, b) => Number(b.total_value) - Number(a.total_value))
+    .map((t) => ({ name: t.award_type ?? 'Unknown', value: Number(t.total_value), count: t.count }));
 
   return (
     <div className="space-y-6">
@@ -213,7 +213,7 @@ function VendorDetail() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-right">{a.count.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{formatUSD(a.amount)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{formatUSD(Number(a.amount))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
