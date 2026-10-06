@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # pull_request trigger removed: the OIDC role trusts only refs/heads/main
+  # and environment:teardown
 
 permissions:
   contents: read
@@ -92,6 +93,5 @@ jobs:
               body: output
             })
 
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve tfplan
+      # Auto-apply removed: infrastructure is torn down via terraform-destroy.yml.
+      # Re-add an apply step here to bring the stack back.
