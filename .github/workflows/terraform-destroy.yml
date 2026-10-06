@@ -1,0 +1,87 @@
+name: "Terraform Destroy"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'destroy-govgraph' to permanently delete all GovGraph infrastructure"
+        required: true
+        type: string
+
+# Deny-all at workflow level; the job re-grants only what it needs
+permissions: {}
+
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    name: "Terraform Destroy"
+    # Defense in depth. The hard gate is the `teardown` environment: it requires
+    # approval from ben-kahl and only allows deployments from main
+    # (configured in repo Settings -> Environments).
+    if: >-
+      github.event.inputs.confirm == 'destroy-govgraph' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'ben-kahl' &&
+      github.triggering_actor == 'ben-kahl' &&
+      github.repository == 'ben-kahl/govgraph'
+    runs-on: ubuntu-latest
+    environment: teardown
+    permissions:
+      id-token: write
+      contents: read
+    # VPC Lambda ENIs can take 20-40 minutes to release before subnets/SGs delete
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        working-directory: ./infra
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+          # Role max session raised to 2h; destroy can outlast the 1h default
+          role-duration-seconds: 7200
+
+      - name: Load Variables
+        env:
+          TFVARS_CONTENT: ${{ secrets.DEV_TFVARS }}
+        run: printf '%s' "$TFVARS_CONTENT" > dev.tfvars
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      # force_destroy must be persisted to state before destroy can empty the buckets
+      - name: Enable S3 force_destroy
+        run: >
+          terraform apply -auto-approve -input=false -var-file=dev.tfvars
+          -target=aws_s3_bucket.raw_data
+          -target=aws_s3_bucket.lambda_builds
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve -input=false -var-file=dev.tfvars
+
+      - name: Verify state is empty
+        run: |
+          remaining=$(terraform state list)
+          if [ -n "$remaining" ]; then
+            echo "Resources still in state:"
+            echo "$remaining"
+            exit 1
+          fi
+          echo "All Terraform-managed resources destroyed."

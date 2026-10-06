@@ -3,7 +3,8 @@ resource "random_id" "bucket_suffix" {
 }
 
 resource "aws_s3_bucket" "lambda_builds" {
-  bucket = "gov-graph-lambda-builds-${random_id.bucket_suffix.hex}"
+  bucket        = "gov-graph-lambda-builds-${random_id.bucket_suffix.hex}"
+  force_destroy = true
 
   tags = {
     Terraform   = "true"
@@ -31,7 +32,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_builds" {
 }
 
 resource "aws_s3_bucket" "raw_data" {
-  bucket = "govgraph-raw-data-${random_id.bucket_suffix.hex}"
+  bucket        = "govgraph-raw-data-${random_id.bucket_suffix.hex}"
+  force_destroy = true
 
   tags = {
     Name        = "Raw Contract Data Archive"
